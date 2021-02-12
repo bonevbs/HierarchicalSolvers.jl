@@ -1,55 +1,72 @@
-### Definitions of datastructures and basic constructors and operators
+### Definitions of datastructure and operators to store the nested dissection structure
+# nested dissection is stored as a binary tree containing InvertedIndices
+# The nested dissection datastructure contains not only indices to be eliminated but als the indives that they are connected to.
 # Written by Boris Bonev, Feb. 2021
 
-# nested dissection is stored as a binary tree containing InvertedIndices
+# Relies on the Binary tree structure defined in HssMatrices (Maybe change that?)
 const NestedDissection = BinaryNode{Tuple{Vector{Int}, Vector{Int}}}
 
-function getindex(A::NestedDissection, d::Symbol)
-  if     d == :int  return A.data[1]
-  elseif d == :bnd  return A.data[2]
-  else            throw(KeyError(d))
-  end
-end
+_getproperty(x::NestedDissection, ::Val{s}) where {s} = getfield(x, s)
+_getproperty(x::NestedDissection, ::Val{:inter}) = x.data[1]
+_getproperty(x::NestedDissection, ::Val{:bound}) = x.data[2]
+Base.getproperty(x::NestedDissection, s::Symbol) = _getproperty(x, Val{s}())
 
 NDNode(int::Vector{Int}, bnd::Vector{Int}) = BinaryNode((int, bnd))
 NDNode(int::Vector{Int}, bnd::Vector{Int}, left::NestedDissection, right::NestedDissection) = BinaryNode((int, bnd), left, right)
 NDNode(left::NestedDissection, right::NestedDissection) = BinaryNode((union(left.bnd, right.bnd), empty(left.bnd)), left, right)
 
+# get all indices in post-order
+function postorder(nd::NestedDissection)
+  ind = Vector{Int}()
+  for x in PostOrderDFS(nd)
+    ind = [ind; x.inter]
+  end
+  ind = [ind; nd.bound]
+end
 
-# function postorder(nd::NestedDissection)
-#   if !isnothing(node.left)
-# end
-
-# function for reading in 
-function parse_nested_dissection(fathers::Vector{Int}, lsons::Vector{Int}, rsons::Vector{Int}, ninter::Vector{Int}, inter::Matrix{Int}, nbound::Vector{Int}, bound::Matrix{Int})
+# convenience function for reading in my own serialized elimination tree format
+# probably of little to no use to others
+function parse_elimtree(fathers::Vector{Int}, lsons::Vector{Int}, rsons::Vector{Int}, ninter::Vector{Int}, inter::Matrix{Int}, nbound::Vector{Int}, bound::Matrix{Int})
   nnodes = length(fathers)
-  nnodes == length(lsons) == length(rsons) == length(niter) == length(nbound) == size(inter,2) == size(bound,2) || throw(DimensionMismatch("dimensions inconsistent among inputs"))
+  nnodes == length(lsons) == length(rsons) == length(ninter) == length(nbound) == size(inter,2) == size(bound,2) || throw(DimensionMismatch("dimensions inconsistent among inputs"))
 
   # find the root
-  iroot = findall(x->x==-1, fathers);
-  if length(iroot) != 1 throw(ArgumentError("found either less than or more than one root.")) end
-  i = iroot[1]
-  s = Stack{Int}()
-  snd = Stack{NDNode}()
+  roots = findall(x->x==-1, fathers);
+  if length(roots) != 1 throw(ArgumentError("found either less than or more than one root.")) end
 
-  while !isempty(s)
+  # prepare Stack for tree indices and for the assembly
+  sind = Stack{Int}()
+  push!(sind, roots[1])
+  ilast = -2
+  snodes = Stack{NestedDissection}()
+
+  while !isempty(sind)
+    i = first(sind)
     # moving up/down or a leaf?
-    if rsons[i] == -1 && lsons[i] == -1
-      push!(snd, NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i]))
-      i = pop!(s)
-    # moving up from the left nad a right child remains
-    elseif ilast == lsons[i] && rsons[i] != -1
-      ndleft = ndlast
-      ilast = 1
-      i = pop!(s)
-    elseif ilast == rsons[i] || (ilast == lsons[i] && rsons[i] == -1)
-      ndlast = NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i], ndleft, ndright)
+    if rsons[i] == -1 && lsons[i] == -1 # at a leaf
+      push!(snodes, NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i]))
+      ilast = pop!(sind)
+    elseif ilast == rsons[i] # moving up from the right
+      right = pop!(snodes)
+      if lsons[i] != -1
+        left = pop!(snodes)
+      else
+        left = nothing
+      end
+      push!(snodes, NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i], left, right))
+      ilast = pop!(sind)
+    elseif ilast == lsons[i] && rsons[i] == -1 # moving up from the left but can't move down
+      left = pop!(snodes)
+      right = nothing
+      push!(snodes, NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i], left, right))
+      ilast = pop!(sind)
+    elseif (ilast == lsons[i] && rsons[i] != -1) || (lsons[i] == -1 && rsons != -1) # move down to the right
       ilast = i
-    else
-      push!(s, rsons[i])
-      push!(s, lsons[i])
+      push!(sind, rsons[i])
+    else # go down to the left
       ilast = i
-      i = lsons[i]
+      push!(sind, lsons[i])
     end
   end
+  pop!(snodes)
 end

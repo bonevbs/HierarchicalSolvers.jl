@@ -10,10 +10,12 @@ module HierarchicalSolvers
   using SparseArrays
   using DataStructures
 
+  import Base.getproperty
+
   const swlevel = 3
 
   # nesteddissection.jl
-  export NDNode, NestedDissection, parse_nested_dissection
+  export NDNode, NestedDissection, parse_elimtree, postorder
 
   include("nesteddissection.jl")
 end # module

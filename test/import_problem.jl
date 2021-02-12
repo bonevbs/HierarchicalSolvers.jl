@@ -1,3 +1,8 @@
+### import_problem.jl
+# Example file to load a sample problem from a .mat-file, where the nested dissection structure is described in a special, serialized formats
+#
+# Written by Boris Bonev, Feb. 2021
+
 include("../src/HierarchicalSolvers.jl")
 using .HierarchicalSolvers
 using HssMatrices
@@ -18,12 +23,16 @@ lsons   = convert(Vector{Int}, dropdims(elim_tree["lsons"],   dims=1));
 rsons   = convert(Vector{Int}, dropdims(elim_tree["rsons"],   dims=1));
 ninter  = convert(Vector{Int}, dropdims(elim_tree["ninter"],  dims=1));
 nbound  = convert(Vector{Int}, dropdims(elim_tree["nbound"],  dims=1));
-inter   = convert(Matrix{Int}, elim_tree["ninter"]);
-bound   = convert(Matrix{Int}, elim_tree["nbound"]);
+inter   = convert(Matrix{Int}, elim_tree["inter"]);
+bound   = convert(Matrix{Int}, elim_tree["bound"]);
 # just convert everything into the appropriate formats
 
 
-parse_nested_dissection(fathers, lsons, rsons, ninter, inter, nbound, bound)
+etree = parse_elimtree(fathers, lsons, rsons, ninter, inter, nbound, bound)
+
+pind = postorder(etree)
+
+spy(A[pind, pind])
 
 # create the nested dissection from the elimination tree DataStructures
 #nested_dissection(fathers, lsons, rsons, ninter, inter, nbound, bound)
