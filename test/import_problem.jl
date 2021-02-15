@@ -3,12 +3,12 @@
 #
 # Written by Boris Bonev, Feb. 2021
 
+using LinearAlgebra, SparseArrays, IterativeSolvers, Plots
+using MAT
+
 include("../src/HierarchicalSolvers.jl")
 using .HierarchicalSolvers
 using HssMatrices
-using MAT
-using LinearAlgebra, SparseArrays, Plots
-using DataStructures
 
 ## Read the problem from MAT file
 file = matopen("./test/test.mat")
@@ -30,13 +30,14 @@ bound   = convert(Matrix{Int}, elim_tree["bound"]);
 
 etree = parse_elimtree(fathers, lsons, rsons, ninter, inter, nbound, bound)
 
-pind = postorder(etree)
+# pind = postorder(etree)
 
-spy(A[pind, pind])
+# spy(A[pind, pind])
 
-# create the nested dissection from the elimination tree DataStructures
-#nested_dissection(fathers, lsons, rsons, ninter, inter, nbound, bound)
+# compare with fill-in reduction
+# x1, ch1 = gmres(A, b, reltol=1e-9, log=true)
+# x2, ch2 = gmres(A[pind, pind], b, reltol=1e-9, log=true)
 
-# function first_integer(fathers::Vector{Int})
-#   println(a[1])
-# end
+# plot()
+# plot!(ch1[:resnorm], yaxis=:log)
+# plot!(ch2[:resnorm])

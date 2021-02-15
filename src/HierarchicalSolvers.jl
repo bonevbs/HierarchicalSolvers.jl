@@ -8,6 +8,7 @@ module HierarchicalSolvers
   using HssMatrices
   using LinearAlgebra
   using SparseArrays
+  using LowRankApprox
   using DataStructures
 
   import Base.getproperty
@@ -16,6 +17,12 @@ module HierarchicalSolvers
 
   # nesteddissection.jl
   export NDNode, NestedDissection, parse_elimtree, postorder
+  # solvernode.jl
+  export SolverNode
+  # factorization.jl
+  export _factor_leaf, _factor_branch
 
   include("nesteddissection.jl")
+  include("solvernode.jl")
+  include("factorization.jl")
 end # module
