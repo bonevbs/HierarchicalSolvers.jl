@@ -7,9 +7,13 @@
 const NestedDissection = BinaryNode{Tuple{Vector{Int}, Vector{Int}}}
 
 _getproperty(x::NestedDissection, ::Val{s}) where {s} = getfield(x, s)
-_getproperty(x::NestedDissection, ::Val{:inter}) = x.data[1]
-_getproperty(x::NestedDissection, ::Val{:bound}) = x.data[2]
+_getproperty(x::NestedDissection, ::Val{:int}) = x.data[1]
+_getproperty(x::NestedDissection, ::Val{:bnd}) = x.data[2]
 Base.getproperty(x::NestedDissection, s::Symbol) = _getproperty(x, Val{s}())
+_setproperty!(x::NestedDissection, ::Val{s}, a) where {s} = setfield!(x, s, a)
+_setproperty!(x::NestedDissection, ::Val{:int}, a) = (x.data =  (a, x.data[2]))
+_setproperty!(x::NestedDissection, ::Val{:bnd}, a) = (x.data =  (x.data[1], a))
+Base.setproperty!(x::NestedDissection, s::Symbol, a) = _setproperty!(x, Val{s}(), a)
 
 NDNode(int::Vector{Int}, bnd::Vector{Int}) = BinaryNode((int, bnd))
 NDNode(int::Vector{Int}, bnd::Vector{Int}, left::NestedDissection, right::NestedDissection) = BinaryNode((int, bnd), left, right)
@@ -19,9 +23,9 @@ NDNode(left::NestedDissection, right::NestedDissection) = BinaryNode((union(left
 function postorder(nd::NestedDissection)
   ind = Vector{Int}()
   for x in PostOrderDFS(nd)
-    ind = [ind; x.inter]
+    ind = [ind; x.int]
   end
-  ind = [ind; nd.bound]
+  ind = [ind; nd.bnd]
 end
 
 # convenience function for reading in my own serialized elimination tree format

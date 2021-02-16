@@ -20,7 +20,7 @@ module HierarchicalSolvers
   # solvernode.jl
   export SolverNode
   # factorization.jl
-  export _factor_leaf, _factor_branch
+  export symfact!
 
   include("nesteddissection.jl")
   include("solvernode.jl")
