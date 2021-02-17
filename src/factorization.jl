@@ -1,5 +1,7 @@
 ### routines to generate the factorization
 
+using Infiltrator
+
 ## Symbolic factorization routine
 # returns a reordered nessted dissection tree as well as a nested dissection tree containing the local indices
 symfact!(nd::NestedDissection) = _symfact!(nd)
@@ -40,78 +42,46 @@ function _symfact!(nd::NestedDissection)
 end
 
 ## Factorization routine
-function factor(A::SparseMatrixCSC{T}, nd::NestedDissection)
+function factor(A::SparseMatrixCSC{T}, nd::NestedDissection) where T
   nd, nd_loc = symfact!(nd)
-
+  F = _factor_branch(A, nd, nd_loc)
 end
 
-function _factor_branch()
+# recursive definition of the internal factorization routine
+function _factor_branch(A::SparseMatrixCSC{T}, nd::NestedDissection, nd_loc::NestedDissection) where T
+  if isleaf(nd)
+    F = _factor_leaf(A, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd)
+  elseif isbranch(nd)
+    Fl = _factor_branch(A, nd.left, nd_loc.left)
+    Fr = _factor_branch(A, nd.right, nd_loc.right)
+    int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
+    int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
+    ni1 = length(nd_loc.left.int); nb1 = length(nd_loc.left.bnd)
+    ni2 = length(nd_loc.right.int); nb2 = length(nd_loc.right.bnd)
+
+    Aii = [Fl.S[1:ni1, 1:ni1] Matrix(A[int1, int2]); Matrix(A[int2, int1]) Fr.S[1:ni2, 1:ni2]];
+    Aib = [Fl.S[1:ni1, ni1+1:end] Matrix(A[int1, bnd2]); Matrix(A[int2, bnd1]) Fr.S[1:ni2, ni2+1:end]];
+    Abi = [Fl.S[ni1+1:end, 1:ni1] Matrix(A[bnd1, int2]); Matrix(A[bnd2, int1]) Fr.S[ni2+1:end, 1:ni2]];
+    Abb = [Fl.S[ni1+1:end, ni1+1:end] Matrix(A[bnd1, bnd2]); Matrix(A[bnd2, bnd1]) Fr.S[ni2+1:end, ni2+1:end]];
+
+    L = Abi / Aii
+    R = Aii \ Aib
+    S = Abb - Abi * R
+    perm = [nd_loc.int; nd_loc.bnd]
+
+    F = SolverNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
+  else
+    throw(ErrorException("Expected nested dissection to be a binary tree. Found a node with only one child."))  
+  end
+  return F
 end
 
 function _factor_leaf(A::SparseMatrixCSC{T, Int}, int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T
   D = A[int, int]
   L = Matrix(A[bnd, int]) / D # converts right/left-hand side to dense first
   R = D \ Matrix(A[int, bnd])
-  S = A[bnd,bnd] - A[bnd, int] * R
-  # probably unnecessary to save the local indices
-  SolverNode(D,S,L,R,int,bnd)
+  S = A[bnd, bnd] - A[bnd, int] * R
+  #S = A[bnd[[int_loc; bnd_loc]],bnd[int_loc; bnd_loc]] - A[bnd[int_loc; bnd_loc], int] * R[:, [int_loc; bnd_loc]]
+  perm = [int_loc; bnd_loc]
+  SolverNode(D, S[perm,perm], L, R, int, bnd, int_loc, bnd_loc)
 end
-
-
-# # wrapper to access therecursive definition of the factorization
-# function factor(A::AbstractMatrix{T}, nd::NestedDissection)
-#   F = _factor_branch(A, nd)
-# end
-
-# # recursive definition of the factorization routine
-# function _factor_branch(A::AbstractMatrix{T}, nd::NestedDissection, fint::Vector{Int}, fbnd::Vector{Int}) where T
-#   if isleaf(nd) 
-#     _factor_leaf(A, nd.int, nd.bnd)
-#   else
-#     if !isnothing(nd.left)
-#       left = _factor_branch(A, nd.left)
-#       # figure out where the children indices go in the parent
-#       left.fint = findfirst.(isequal.(nd.int), Ref(left.bnd))
-#       left.fbnd = findfirst.(isequal.(nd.bnd), Ref(left.bnd))
-#       intl = left.bnd[left.fint];
-#       bndl = left.bnd[left.fbnd];
-#     else
-#       intl = Vector{Int}()
-#       bndl = Vector{Int}()
-#       left = nothing
-#     end
-#     if !isnothing(nd.right)
-#       # modify computer father indices while going down
-#       right = _factor_branch(A, nd.right)
-#       right.fint = findfirst.(isequal.(nd.int), Ref(right.bnd))
-#       right.fbnd = findfirst.(isequal.(nd.bnd), Ref(right.bnd))
-#       intr = right.bnd[right.fint];
-#       bndr = right.bnd[right.fbnd];
-#     else
-#       intl = Vector{Int}()
-#       bndl = Vector{Int}()
-#       right = nothing
-#     end
-#     # check that we really got all the degrees of freedom
-#     int = [intl; intr]
-#     bnd = [bndl; bndr]
-#   end
-# end
-
-# function _factor_leaf(A::SparseMatrixCSC{T, Int}, int::Vector{Int}, bnd::Vector{Int}, fint::Vector{Int}, fbnd::Vector{Int}) where T
-#   D = A[int, int]
-#   L = Matrix(A[bnd, int]) / D # converts right/left-hand side to dense first
-#   R = D \ Matrix(A[int, bnd])
-#   S = A[bnd,bnd] - A[bnd, int] * R
-#   SolverNode(D,S,L,R,int,bnd)
-# end
-
-# # creates the parent node but also updates the index sets of the children to indicate where boundary indices are found in the parent
-# # maybe move this into the factorization process
-# function parent!(left, right, inter, bound)
-#   # compute where the children indices can be found in the parent
-#   left.finter = findfirst.(isequal.(inter), Ref(left.bound))
-#   left.fbound = findfirst.(isequal.(bound), Ref(left.bound))
-#   right.finter = findfirst.(isequal.(inter), Ref(right.bound))
-#   right.fbound = findfirst.(isequal.(bound), Ref(right.bound))
-# end

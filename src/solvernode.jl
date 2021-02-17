@@ -8,11 +8,11 @@ mutable struct SolverNode{T<:Number} #<: Factorization
   R::Union{Matrix{T}, LowRankMatrix{T}}
 
   # rename these to something more meaningful!!
-  inter::Vector{Int}
-  finter::Vector{Int}
+  int::Vector{Int}
+  bnd::Vector{Int}
 
-  bound::Vector{Int}
-  fbound::Vector{Int}
+  int_loc::Vector{Int}
+  bnd_loc::Vector{Int}
 
   left::Union{SolverNode{T}, Nothing}
   right::Union{SolverNode{T}, Nothing}
@@ -20,20 +20,25 @@ mutable struct SolverNode{T<:Number} #<: Factorization
   # internal constructors with checks for dimensions
   global function _SolverNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
     L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
-    inter::Vector{Int}, bound::Vector{Int}) where T
-    new{T}(D, S, L, R, inter, Vector{Int}(), bound, Vector{Int}(), nothing, nothing)
+    int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T
+    new{T}(D, S, L, R, int, bnd, int_loc, bnd_loc, nothing, nothing)
   end
   # parent constructor, finds the local indices of the children indices automatically 
   global function _SolverNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
-    L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}}, inter::Vector{Int}, bound::Vector{Int},
+    L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
+    int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int},
     left::SolverNode{T}, right::SolverNode{T}) where T
     # maybe also implement a check to make sure that disjointedness is guaranteed
-    new{T}(D, S, L, R, inter, Vector{Int}(), bound, Vector{Int}(), left, right)
+    new{T}(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
   end
 end
 SolverNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
-  L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
-  inter::Vector{Int}, bound::Vector{Int}) where T = _SolverNode(D, S, L, R, inter, bound)
+L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
+int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T = _SolverNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
 SolverNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
-  L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
-  inter::Vector{Int}, bound::Vector{Int}, left::SolverNode{T}, right::SolverNode{T}) where T = _SolverNode(D, S, L, R, inter, bound, left, right)
+L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
+int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int},
+left::SolverNode{T}, right::SolverNode{T}) where T = _SolverNode(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
+
+function _apply_factorization
+end
