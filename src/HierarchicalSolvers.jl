@@ -11,19 +11,22 @@ module HierarchicalSolvers
   using LowRankApprox
   using DataStructures
 
-  import Base.getproperty
+  import Base.getproperty, Base.setproperty!, Base.size, Base.eltype, Base.getindex
   import HssMatrices.isleaf, HssMatrices.isbranch
 
   const swlevel = 3
 
   # nesteddissection.jl
   export NDNode, NestedDissection, parse_elimtree, postorder
+  # blockmatrix.jl
+  export BlockMatrix
   # factornode.jl
   export FactorNode, solve, solve!
   # factorization.jl
   export symfact!, factor
 
   include("nesteddissection.jl")
+  include("blockmatrix.jl")
   include("factornode.jl")
   include("factorization.jl")
 end # module
