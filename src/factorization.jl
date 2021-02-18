@@ -1,7 +1,5 @@
 ### routines to generate the factorization
 
-using Infiltrator
-
 ## Symbolic factorization routine
 # returns a reordered nessted dissection tree as well as a nested dissection tree containing the local indices
 symfact!(nd::NestedDissection) = _symfact!(nd)
@@ -44,6 +42,8 @@ end
 ## Factorization routine
 function factor(A::SparseMatrixCSC{T}, nd::NestedDissection) where T
   nd, nd_loc = symfact!(nd)
+  nd_loc.int = collect(1:length(nd.bnd))
+  nd_loc.bnd = Vector{Int}()
   F = _factor_branch(A, nd, nd_loc)
 end
 
@@ -69,7 +69,7 @@ function _factor_branch(A::SparseMatrixCSC{T}, nd::NestedDissection, nd_loc::Nes
     S = Abb - Abi * R
     perm = [nd_loc.int; nd_loc.bnd]
 
-    F = SolverNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
+    F = FactorNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
   else
     throw(ErrorException("Expected nested dissection to be a binary tree. Found a node with only one child."))  
   end
@@ -83,5 +83,5 @@ function _factor_leaf(A::SparseMatrixCSC{T, Int}, int::Vector{Int}, bnd::Vector{
   S = A[bnd, bnd] - A[bnd, int] * R
   #S = A[bnd[[int_loc; bnd_loc]],bnd[int_loc; bnd_loc]] - A[bnd[int_loc; bnd_loc], int] * R[:, [int_loc; bnd_loc]]
   perm = [int_loc; bnd_loc]
-  SolverNode(D, S[perm,perm], L, R, int, bnd, int_loc, bnd_loc)
+  return FactorNode(D, S[perm,perm], L, R, int, bnd, int_loc, bnd_loc)
 end
