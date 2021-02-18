@@ -1,5 +1,4 @@
 using LinearAlgebra, SparseArrays, LowRankApprox, Plots
-using MAT
 using BenchmarkTools
 
 include("../src/HierarchicalSolvers.jl")

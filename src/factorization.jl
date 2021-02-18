@@ -1,5 +1,7 @@
 ### routines to generate the factorization
 
+using Infiltrator
+
 ## Symbolic factorization routine
 # returns a reordered nessted dissection tree as well as a nested dissection tree containing the local indices
 symfact!(nd::NestedDissection) = _symfact!(nd)
@@ -54,6 +56,7 @@ function _factor_branch(A::SparseMatrixCSC{T}, nd::NestedDissection, nd_loc::Nes
   elseif isbranch(nd)
     Fl = _factor_branch(A, nd.left, nd_loc.left)
     Fr = _factor_branch(A, nd.right, nd_loc.right)
+
     int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
     int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
     ni1 = length(nd_loc.left.int); nb1 = length(nd_loc.left.bnd)
@@ -83,5 +86,6 @@ function _factor_leaf(A::SparseMatrixCSC{T, Int}, int::Vector{Int}, bnd::Vector{
   S = A[bnd, bnd] - A[bnd, int] * R
   #S = A[bnd[[int_loc; bnd_loc]],bnd[int_loc; bnd_loc]] - A[bnd[int_loc; bnd_loc], int] * R[:, [int_loc; bnd_loc]]
   perm = [int_loc; bnd_loc]
-  return FactorNode(D, S[perm,perm], L, R, int, bnd, int_loc, bnd_loc)
+  F = FactorNode(D, S[perm,perm], L, R, int, bnd, int_loc, bnd_loc)
+  return F
 end

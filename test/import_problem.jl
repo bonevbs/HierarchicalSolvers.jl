@@ -31,7 +31,7 @@ bound   = convert(Matrix{Int}, elim_tree["bound"]);
 etree = parse_elimtree(fathers, lsons, rsons, ninter, inter, nbound, bound)
 
 F = factor(A, etree);
-x = solve!(F, copy(b))
+x = solve!(F, copy(b));
 #@btime F = factor(A, etree)
 
 # pind = postorder(etree)
