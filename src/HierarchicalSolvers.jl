@@ -11,7 +11,7 @@ module HierarchicalSolvers
   using LowRankApprox
   using DataStructures
 
-  import Base.getproperty, Base.setproperty!, Base.size, Base.eltype, Base.getindex
+  import Base.getproperty, Base.setproperty!, Base.size, Base.eltype, Base.getindex, Base.*, Base./, Base.\
   import HssMatrices.isleaf, HssMatrices.isbranch
 
   const swlevel = 3

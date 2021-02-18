@@ -1,4 +1,4 @@
-### 2x2 Block matrix structure.
+### 2x2 Block matrix structure. Convenience datastrucutre to hold our diagonal blocks for elimination.
 # Written by Boris Bonev, Feb. 2021
 
 # 2x2 block matrix that can hold any type of 
@@ -54,3 +54,35 @@ end
 getindex(B::BlockMatrix, i::Int, jr::AbstractRange) = transpose(eltype(B)[B[i,j] for j=jr])
 getindex(B::BlockMatrix, ir::AbstractRange, j::Int) = eltype(B)[B[i,j] for i=ir]
 getindex(B::BlockMatrix, ir::AbstractRange, jr::AbstractRange) = eltype(B)[B[i,j] for i=ir,j=jr]
+Matrix(B::BlockMatrix) = [Matrix(B.A11) Matrix(B.A12); Matrix(B.A21) Matrix(B.A22)]
+
+# Some basic linear algebra routines
+function *(A::BlockMatrix, B::BlockMatrix)
+  size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
+  size(A.A11,2) == size(B.A11,1) ||  throw(DimensionMismatch("Block rows of B do not match block columns of A. Expected $(size(A.A11, 2)), got $(size(B.A11, 1))"))
+  BlockMatrix(A.A11*B.A11 + A.A12*B.A21, A.A11*B.A12 + A.A22*B.A21, A.A21*B.A11 + A.A22*B.A21, A.A21*B.A12 + A.A22*B.A22)
+end
+function *(A::BlockMatrix, B::AbstractMatrix)
+  size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
+  m1, n1 = size(A.A11)
+  [A.A11*B[1:n1, :] .+ A.A12*B[n1+1:end, :]; A.A21*B[1:n1, :] .+ A.A22*B[n1+1:end, :]]
+end
+function *(A::AbstractMatrix, B::BlockMatrix)
+  size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
+  m1, n1 = size(B.A11)
+  [A[:, 1:m1]*B.A11 .+ A[:, m1+1:end]*B.A21 A[:, 1:m1]*B.A12 .+ A[:, m1+1:end]*B.A22]
+end
+function *(A::BlockMatrix, v::AbstractVector)
+  size(A,2) == length(v) ||  throw(DimensionMismatch("Dimension of v does not match second dimension of A. Expected $(size(A, 2)), got $(length(v))"))
+  m1, n1 = size(A.A11)
+  [A.A11*v[1:n1] .+ A.A12*v[n1+1:end]; A.A21*v[1:n1] .+ A.A22*v[n1+1:end]]
+end
+
+# function \(A::BlockMatrix, B::BlockMatrix)
+#   # check that diagonal blocks are square
+#   S = A.A22 .- A.A21*(A.A11\A.A12)
+
+#   BlockMatrix(
+#     A\
+#   )
+# end
