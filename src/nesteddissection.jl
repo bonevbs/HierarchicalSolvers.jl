@@ -9,11 +9,11 @@ const NestedDissection = BinaryNode{Tuple{Vector{Int}, Vector{Int}}}
 _getproperty(x::NestedDissection, ::Val{s}) where {s} = getfield(x, s)
 _getproperty(x::NestedDissection, ::Val{:int}) = x.data[1]
 _getproperty(x::NestedDissection, ::Val{:bnd}) = x.data[2]
-Base.getproperty(x::NestedDissection, s::Symbol) = _getproperty(x, Val{s}())
+getproperty(x::NestedDissection, s::Symbol) = _getproperty(x, Val{s}())
 _setproperty!(x::NestedDissection, ::Val{s}, a) where {s} = setfield!(x, s, a)
 _setproperty!(x::NestedDissection, ::Val{:int}, a) = (x.data =  (a, x.data[2]))
 _setproperty!(x::NestedDissection, ::Val{:bnd}, a) = (x.data =  (x.data[1], a))
-Base.setproperty!(x::NestedDissection, s::Symbol, a) = _setproperty!(x, Val{s}(), a)
+setproperty!(x::NestedDissection, s::Symbol, a) = _setproperty!(x, Val{s}(), a)
 
 NDNode(int::Vector{Int}, bnd::Vector{Int}) = BinaryNode((int, bnd))
 NDNode(int::Vector{Int}, bnd::Vector{Int}, left::NestedDissection, right::NestedDissection) = BinaryNode((int, bnd), left, right)
@@ -26,6 +26,14 @@ function postorder(nd::NestedDissection)
     ind = [ind; x.int]
   end
   ind = [ind; nd.bnd]
+end
+
+# recursively compute the interior
+getinterior(nd::NestedDissection) = _getinterior!(nd, Vector{Int}())
+function _getinterior!(nd::NestedDissection, interior::Vector{Int})
+  if !isnothing(nd.left) interior = _getinterior!(nd.left, interior) end
+  if !isnothing(nd.right) interior = _getinterior!(nd.right, interior) end
+  return [interior; nd.int]
 end
 
 # convenience function for reading in my own serialized elimination tree format

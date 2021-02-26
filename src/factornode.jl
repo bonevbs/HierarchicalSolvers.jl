@@ -3,7 +3,7 @@
 
 # datastructure to hold the hiearchical factorization
 mutable struct FactorNode{T<:Number} <: Factorization{T}
-  D::Union{Matrix{T}, SparseMatrixCSC{T}}
+  D::Union{Matrix{T}, SparseMatrixCSC{T}, BlockMatrix{T}}
   S::Union{Matrix{T}, HssMatrix{T}}
   L::Union{Matrix{T}, LowRankMatrix{T}}
   R::Union{Matrix{T}, LowRankMatrix{T}}
@@ -19,13 +19,13 @@ mutable struct FactorNode{T<:Number} <: Factorization{T}
   right::Union{FactorNode{T}, Nothing}
 
   # internal constructors with checks for dimensions
-  global function _FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
+  global function _FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
     L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
     int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T
     new{T}(D, S, L, R, int, bnd, int_loc, bnd_loc, nothing, nothing)
   end
   # parent constructor, finds the local indices of the children indices automatically 
-  global function _FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
+  global function _FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
     L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
     int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int},
     left::FactorNode{T}, right::FactorNode{T}) where T
@@ -35,10 +35,10 @@ mutable struct FactorNode{T<:Number} <: Factorization{T}
 end
 
 # outer constructors
-FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
+FactorNode(D::Union{Matrix{T},SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
 L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
 int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
-FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}}, S::Union{Matrix{T}, HssMatrix{T}},
+FactorNode(D::Union{Matrix{T},SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
 L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
 int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int},
 left::FactorNode{T}, right::FactorNode{T}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
@@ -58,20 +58,19 @@ function solve!(F::FactorNode, rhs::AbstractMatrix)
   rhs = _rsolve!(F, rhs)
 end
 
+# recursive solution routines
 function _lsolve!(F::FactorNode, rhs::AbstractMatrix)
   if !isnothing(F.left) rhs = _lsolve!(F.left, rhs) end
   if !isnothing(F.right) rhs = _lsolve!(F.right, rhs) end
   rhs[F.bnd,:] .= rhs[F.bnd,:] .- F.L*rhs[F.int,:]
   return rhs
 end
-
 function _rsolve!(F::FactorNode, rhs::AbstractMatrix)
   rhs[F.int,:] .= rhs[F.int,:] .- F.R*rhs[F.bnd,:]
   if !isnothing(F.left) rhs = _rsolve!(F.left, rhs) end
   if !isnothing(F.right) rhs = _rsolve!(F.right, rhs) end
   return rhs
 end
-
 function _dsolve!(F::FactorNode, rhs::AbstractMatrix)
   if !isnothing(F.left) rhs = _dsolve!(F.left, rhs) end
   if !isnothing(F.right) rhs = _dsolve!(F.right, rhs) end

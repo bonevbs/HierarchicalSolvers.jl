@@ -28,9 +28,8 @@ inter   = convert(Matrix{Int}, elim_tree["inter"]);
 bound   = convert(Matrix{Int}, elim_tree["bound"]);
 # just convert everything into the appropriate formats
 
-etree = parse_elimtree(fathers, lsons, rsons, ninter, inter, nbound, bound)
-
-F = factor(A, etree);
+nd = parse_elimtree(fathers, lsons, rsons, ninter, inter, nbound, bound)
+F, nd = factor!(A, nd, swlevel = 6);
 x = solve!(F, copy(b));
 #@btime F = factor(A, etree)
 
