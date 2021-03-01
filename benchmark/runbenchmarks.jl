@@ -6,12 +6,14 @@
 using LinearAlgebra, SparseArrays, IterativeSolvers, Plots
 using MAT
 
+#using HssMatrices
 include("../src/HierarchicalSolvers.jl")
 using .HierarchicalSolvers
-using HssMatrices
+
+using BenchmarkTools
 
 ## Read the problem from MAT file
-file = matopen("./test/test.mat")
+file = matopen("./benchmark/benchmark_problem.mat")
 elim_tree = read(file, "elim_tree") # note that this does NOT introduce a variable ``varname`` into scope
 A = read(file, "A")
 b = read(file, "b")
@@ -28,17 +30,12 @@ bound   = convert(Matrix{Int}, elim_tree["bound"]);
 # just convert everything into the appropriate formats
 
 nd = parse_elimtree(fathers, lsons, rsons, ninter, inter, nbound, bound)
-F = factor(A, nd, swlevel = 0, atol=1e-3, rtol=1e-3)
+
+F = factor(A, nd, swlevel = 0, atol=1e-3, rtol=1e-3);
 x = solve!(F, copy(b));
 
-# pind = postorder(etree)
+println("Benchmarking hierarchical factorization...")
+@btime F = factor(A, nd, swlevel = 0, atol=1e-3, rtol=1e-3)
 
-# spy(A[pind, pind])
-
-# compare with fill-in reduction
-# x1, ch1 = gmres(A, b, reltol=1e-9, log=true)
-# x2, ch2 = gmres(A[pind, pind], b, reltol=1e-9, log=true)
-
-# plot()
-# plot!(ch1[:resnorm], yaxis=:log)
-# plot!(ch2[:resnorm])
+println("Benchmarking solve step...")
+@btime x = solve!(F, copy(b))

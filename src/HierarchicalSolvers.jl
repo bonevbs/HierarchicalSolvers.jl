@@ -11,7 +11,8 @@ module HierarchicalSolvers
   using LowRankApprox
   using DataStructures
 
-  import Base.getproperty, Base.setproperty!, Base.size, Base.eltype, Base.getindex, Base.*, Base./, Base.\
+  import Base: getproperty, setproperty!, size, eltype, getindex, *, /, \, copy
+  import LinearAlgebra: ldiv!, rdiv!
   import HssMatrices.isleaf, HssMatrices.isbranch
 
   # HierarchicalSolvers.jl
@@ -27,13 +28,13 @@ module HierarchicalSolvers
 
   mutable struct SolverOptions
     swlevel::Int
+    atol::Float64
+    rtol::Float64
   end
   
   # set default values
   function SolverOptions(::Type{T}; args...) where T
-    opts = SolverOptions(
-      3               # swlevel
-    )
+    opts = SolverOptions(5, 1e-6, 1e-6)
     for (key, value) in args
       setfield!(opts, key, value)
     end
@@ -53,7 +54,9 @@ module HierarchicalSolvers
   end
   
   function chkopts!(opts::SolverOptions)
-    opts.swlevel >= 0 || throw(ArgumentError("swlevel"))
+    opts.atol ≥ 0. || throw(ArgumentError("atol"))
+    opts.rtol ≥ 0. || throw(ArgumentError("rtol"))
+    opts.swlevel ≥ 0 || throw(ArgumentError("swlevel"))
   end
 
   include("nesteddissection.jl")

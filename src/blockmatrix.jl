@@ -1,6 +1,8 @@
 ### 2x2 Block matrix structure. Convenience datastrucutre to hold our diagonal blocks for elimination.
 # Written by Boris Bonev, Feb. 2021
 
+using Infiltrator
+
 # 2x2 block matrix that can hold any type of 
 struct BlockMatrix{T, T11 <: AbstractMatrix{T}, T12 <: AbstractMatrix{T}, T21 <: AbstractMatrix{T}, T22 <: AbstractMatrix{T}} <: AbstractMatrix{T}
   A11::T11
@@ -22,6 +24,7 @@ end
 eltype(::Type{BlockMatrix{T, S}}) where {T, S} = T
 size(B::BlockMatrix) = size(B.A11) .+ size(B.A22)
 size(B::BlockMatrix, dim::Int) = size(B)[dim]
+copy(B::BlockMatrix) = BlockMatrix(copy(B.A11), copy(B.A12), copy(B.A21), copy(B.A22))
 
 # getindex
 # this definition might be inefficient, but as it is mainly for display, this is fine
@@ -36,7 +39,7 @@ function _getindex(B::BlockMatrix, i::Int, j::Int)
     end
   else
     if 1 ≤ j ≤ n1
-      ret = B.A12[i-m1,j]
+      ret = B.A21[i-m1,j]
     else
       ret = B.A22[i-m1,j-n1]
     end
@@ -60,7 +63,7 @@ Matrix(B::BlockMatrix) = [Matrix(B.A11) Matrix(B.A12); Matrix(B.A21) Matrix(B.A2
 function *(A::BlockMatrix, B::BlockMatrix)
   size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
   size(A.A11,2) == size(B.A11,1) ||  throw(DimensionMismatch("Block rows of B do not match block columns of A. Expected $(size(A.A11, 2)), got $(size(B.A11, 1))"))
-  BlockMatrix(A.A11*B.A11 + A.A12*B.A21, A.A11*B.A12 + A.A22*B.A21, A.A21*B.A11 + A.A22*B.A21, A.A21*B.A12 + A.A22*B.A22)
+  BlockMatrix(A.A11*B.A11 + A.A12*B.A21, A.A11*B.A12 + A.A12*B.A22, A.A21*B.A11 + A.A22*B.A21, A.A21*B.A12 + A.A22*B.A22)
 end
 function *(A::BlockMatrix, B::AbstractMatrix)
   size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
@@ -78,11 +81,100 @@ function *(A::BlockMatrix, v::AbstractVector)
   [A.A11*v[1:n1] .+ A.A12*v[n1+1:end]; A.A21*v[1:n1] .+ A.A22*v[n1+1:end]]
 end
 
-# function \(A::BlockMatrix, B::BlockMatrix)
-#   # check that diagonal blocks are square
-#   S = A.A22 .- A.A21*(A.A11\A.A12)
+\(A::BlockMatrix, B::AbstractMatrix) = ldiv!(A, copy(B))
+/(A::AbstractMatrix, B::BlockMatrix) = rdiv!(copy(A), B)
 
-#   BlockMatrix(
-#     A\
-#   )
-# end
+function \(A::BlockMatrix, B::BlockMatrix)
+  size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
+  #size(A.A11,1) == size(B,1) || throw(DimensionMismatch("Block structure of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
+  # Form the Schur complement
+  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
+    S22 = A.A22 - A.A21*(A.A11\A.A12)
+  elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
+    error("Not implemented yet")
+    #mul = 
+    #S22 = 
+  else
+    S22 = A.A22 - A.A21*(A.A11\A.A12)
+  end
+  # TODO: this can be optimized by storing factorizations
+  # perform on the first column
+  B11 = A.A11\B.A11
+  B21 = B.A21 - A.A21*B11
+  B21 = S22\B21
+  B11 = B11 - A.A11\(A.A12*B21)
+  # repeat for the second column
+  B12 = A.A11\B.A12
+  B22 = B.A22 - A.A21*B12;
+  B22 = S22\B22
+  B12 = B12 - A.A11\(A.A12*B22); 
+  return BlockMatrix(B11, B12, B21, B22)
+end
+
+function /(B::BlockMatrix, A::BlockMatrix)
+  # safety is off on this one
+  # compute the Schur complement first
+  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
+    S22 = A.A22 - A.A21*(A.A11\A.A12)
+  elseif typeof(A.A11) <: HssMatrix && typeof(A.A2) <: HssMatrix
+    error("Not implemented yet")
+    #mul = 
+    #S22 = 
+  else
+    S22 = A.A22 .- A.A21*(A.A11\A.A12)
+  end
+  # perform solve step on first block row
+  B11 = B.A11/A.A11
+  B12 = B.A12 - B11*A.A12
+  B12 = B12/S22
+  B11 = B11 - (B12*A.A21)/A.A11
+  # repeat for second block row
+  B21 = B.A21/A.A11
+  B22 = B.A22 - B21*A.A12
+  B22 = B22/S22; 
+  B21 = B21 - (B22*A.A21)/A.A11
+  return BlockMatrix(B11, B12, B21, B22)
+end
+
+# quick workaround to Julia/SparseArrays.jl not allowing sparse right-hand sides
+ldiv!(A::Factorization,B::AbstractSparseMatrix) = ldiv!(A, Matrix(B))
+ldiv!(A::Factorization,B::AbstractSparseVector) = ldiv!(A, Vector(B))
+rdiv!(A::AbstractSparseMatrix,B::Factorization) = rdiv!(Matrix(A), B)
+rdiv!(A::AbstractSparseVector,B::Factorization) = rdiv!(Vector(A), B)
+
+# specialized routines for computing A \ B overwriting B
+function ldiv!(A::BlockMatrix, B::AbstractMatrix)
+  m1,n1 = size(A.A11)
+  B[1:n1,:] .= A.A11\B[1:n1,:]
+  B[n1+1:end,:] .= B[n1+1:end,:] .- A.A21*B[1:n1,:]
+  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
+    S22 = A.A22 - A.A21*(A.A11\A.A12)
+  elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
+    error("Not implemented yet")
+    #mul = 
+    #S22 = 
+  else
+    S22 = A.A22 .- A.A21*(A.A11\A.A12)
+  end
+  B[n1+1:end,:] = S22 \ B[n1+1:end,:]
+  B[1:n1,:] .= B[1:n1,:] .- A.A11\(A.A12*B[n1+1:end,:])
+  return B
+end
+# compute B / A overwriting B
+function rdiv!(B::AbstractMatrix, A::BlockMatrix)
+  m1,n1 = size(A.A11)
+  B[:,1:m1] .= B[:,1:m1]/A.A11
+  B[:,m1+1:end] .= B[:,m1+1:end] .- B[:,1:m1]*A.A12
+  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
+    S22 = A.A22 - A.A21*(A.A11\A.A12)
+  elseif typeof(A.A11) <: HssMatrix && typeof(A.A2) <: HssMatrix
+    error("Not implemented yet")
+    #mul = 
+    #S22 = 
+  else
+    S22 = A.A22 .- A.A21*(A.A11\A.A12)
+  end
+  B[:,m1+1:end] = B[:,m1+1:end]/S22
+  B[:,1:m1] = B[:,1:m1] - (B[:,m1+1:end]*A.A21)/A.A11
+  return B
+end
