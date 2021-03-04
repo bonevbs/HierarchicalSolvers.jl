@@ -28,13 +28,23 @@ module HierarchicalSolvers
 
   mutable struct SolverOptions
     swlevel::Int
+    swsize::Int
     atol::Float64
     rtol::Float64
+    c_tol::Float64
+    leafsize::Int
   end
   
   # set default values
   function SolverOptions(::Type{T}; args...) where T
-    opts = SolverOptions(5, 1e-6, 1e-6)
+    opts = SolverOptions(
+      5,      # switching level at which to start compression
+      1000,   # minimum size for compression ## not implemented yet
+      1e-6,   # absolute compression tolerance
+      1e-6,   # relative compression tolerance
+      0.5,    # relative factor to tune low-rank compression tolerance w.r.t HSS compression tolerance
+      32,     # HSS leaf size
+      )
     for (key, value) in args
       setfield!(opts, key, value)
     end
@@ -54,9 +64,11 @@ module HierarchicalSolvers
   end
   
   function chkopts!(opts::SolverOptions)
+    opts.swsize ≥ 1 || throw(ArgumentError("swsize"))
     opts.atol ≥ 0. || throw(ArgumentError("atol"))
     opts.rtol ≥ 0. || throw(ArgumentError("rtol"))
-    opts.swlevel ≥ 0 || throw(ArgumentError("swlevel"))
+    0. < opts.c_tol ≤ 1. || throw(ArgumentError("c_tol"))
+    opts.leafsize ≥ 1 || throw(ArgumentError("leafsize"))
   end
 
   include("nesteddissection.jl")

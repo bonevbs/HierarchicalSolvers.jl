@@ -1,8 +1,6 @@
 ### 2x2 Block matrix structure. Convenience datastrucutre to hold our diagonal blocks for elimination.
 # Written by Boris Bonev, Feb. 2021
 
-using Infiltrator
-
 # 2x2 block matrix that can hold any type of 
 struct BlockMatrix{T, T11 <: AbstractMatrix{T}, T12 <: AbstractMatrix{T}, T21 <: AbstractMatrix{T}, T22 <: AbstractMatrix{T}} <: AbstractMatrix{T}
   A11::T11
@@ -80,9 +78,11 @@ function *(A::BlockMatrix, v::AbstractVector)
   m1, n1 = size(A.A11)
   [A.A11*v[1:n1] .+ A.A12*v[n1+1:end]; A.A21*v[1:n1] .+ A.A22*v[n1+1:end]]
 end
+*(A::BlockMatrix, B::LowRankMatrix) = LowRankMatrix(A*B.U,B.V)
+*(A::LowRankMatrix, B::BlockMatrix) = LowRankMatrix(A.U,(A.V'*B)')
 
-\(A::BlockMatrix, B::AbstractMatrix) = ldiv!(A, copy(B))
-/(A::AbstractMatrix, B::BlockMatrix) = rdiv!(copy(A), B)
+\(A::BlockMatrix, B::AbstractMatrix) = ldiv!(similar(B), A, copy(B))
+/(A::AbstractMatrix, B::BlockMatrix) = rdiv!(similar(A), copy(A), B)
 
 function \(A::BlockMatrix, B::BlockMatrix)
   size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
@@ -137,44 +137,49 @@ function /(B::BlockMatrix, A::BlockMatrix)
 end
 
 # quick workaround to Julia/SparseArrays.jl not allowing sparse right-hand sides
-ldiv!(A::Factorization,B::AbstractSparseMatrix) = ldiv!(A, Matrix(B))
-ldiv!(A::Factorization,B::AbstractSparseVector) = ldiv!(A, Vector(B))
-rdiv!(A::AbstractSparseMatrix,B::Factorization) = rdiv!(Matrix(A), B)
-rdiv!(A::AbstractSparseVector,B::Factorization) = rdiv!(Vector(A), B)
+# TODO: some warnings here, julia doesnt seem happy with those definitions, check what could be doesn
+## CHANGE THIS WITH OWN ROUTINE AND REWRITE CODE
+ldiv!(A::Factorization, B::AbstractSparseMatrix) = ldiv!(A, Matrix(B))
+ldiv!(A::Factorization, B::AbstractSparseVector) = ldiv!(A, Vector(B))
+rdiv!(A::AbstractSparseMatrix, B::Factorization) = rdiv!(Matrix(A), B)
+rdiv!(A::AbstractSparseVector, B::Factorization) = rdiv!(Vector(A), B)
+ldiv!(A::AbstractMatrix, B::AbstractSparseMatrix) = ldiv!(A, Matrix(B))
+ldiv!(A::AbstractMatrix, B::AbstractSparseVector) = ldiv!(A, Vector(B))
+rdiv!(A::AbstractSparseMatrix, B::AbstractMatrix) = rdiv!(Matrix(A), B)
+rdiv!(A::AbstractSparseVector, B::AbstractMatrix) = rdiv!(Vector(A), B)
 
 # specialized routines for computing A \ B overwriting B
-function ldiv!(A::BlockMatrix, B::AbstractMatrix)
+ldiv!(A::BlockMatrix, B::AbstractMatrix) = B = ldiv!(similar(B), A, B)
+function ldiv!(Y::AbstractMatrix, A::BlockMatrix, B::AbstractMatrix)
   m1,n1 = size(A.A11)
-  B[1:n1,:] .= A.A11\B[1:n1,:]
-  B[n1+1:end,:] .= B[n1+1:end,:] .- A.A21*B[1:n1,:]
   if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
     S22 = A.A22 - A.A21*(A.A11\A.A12)
   elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
     error("Not implemented yet")
-    #mul = 
-    #S22 = 
   else
     S22 = A.A22 .- A.A21*(A.A11\A.A12)
   end
-  B[n1+1:end,:] = S22 \ B[n1+1:end,:]
-  B[1:n1,:] .= B[1:n1,:] .- A.A11\(A.A12*B[n1+1:end,:])
-  return B
+  Y[1:n1,:] = A.A11\B[1:n1,:]
+  Y[n1+1:end,:] = B[n1+1:end,:] .- A.A21*Y[1:n1,:]
+  Y[n1+1:end,:] = S22\Y[n1+1:end,:]
+  Y[1:n1,:] = Y[1:n1,:] .- A.A11\(A.A12*Y[n1+1:end,:])
+  return Y
 end
 # compute B / A overwriting B
-function rdiv!(B::AbstractMatrix, A::BlockMatrix)
-  m1,n1 = size(A.A11)
-  B[:,1:m1] .= B[:,1:m1]/A.A11
-  B[:,m1+1:end] .= B[:,m1+1:end] .- B[:,1:m1]*A.A12
-  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
-    S22 = A.A22 - A.A21*(A.A11\A.A12)
-  elseif typeof(A.A11) <: HssMatrix && typeof(A.A2) <: HssMatrix
+rdiv!(A::BlockMatrix, B::AbstractMatrix) = A = rdiv!(similar(A), A, B)
+function rdiv!(Y::AbstractMatrix, A::AbstractMatrix, B::BlockMatrix)
+  m1,n1 = size(B.A11)
+  if ishss(B.A11) && ishss(B.A12) && ishss(B.A21) && ishss(B.A22)
+    S22 = B.A22 - B.A21*(B.A11\B.A12)
+  elseif typeof(B.A11) <: HssMatrix && typeof(B.A22) <: HssMatrix
     error("Not implemented yet")
-    #mul = 
-    #S22 = 
   else
-    S22 = A.A22 .- A.A21*(A.A11\A.A12)
+    S22 = B.A22 .- B.A21*(B.A11\B.A12)
   end
-  B[:,m1+1:end] = B[:,m1+1:end]/S22
-  B[:,1:m1] = B[:,1:m1] - (B[:,m1+1:end]*A.A21)/A.A11
-  return B
+  typeof(B.A11)
+  Y[:,1:m1] = A[:,1:m1]/B.A11
+  Y[:,m1+1:end] = A[:,m1+1:end] .- Y[:,1:m1]*B.A12
+  Y[:,m1+1:end] = Y[:,m1+1:end]/S22
+  Y[:,1:m1] = Y[:,1:m1] - (Y[:,m1+1:end]*B.A21)/B.A11
+  return Y
 end
