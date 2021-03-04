@@ -89,47 +89,16 @@ end
 function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, cmpflag::Bool, atol::Float64, rtol::Float64, leafsize::Int) where T
   int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
   int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
-  ni1 = length(nd_loc.left.int); nb1 = length(nd_loc.left.bnd)
-  ni2 = length(nd_loc.right.int); nb2 = length(nd_loc.right.bnd)
 
-  S1 = Fl.S; S2 = Fr.S
-
-  #Aii, Aib, Abi, Abb = _assemble_blocks(A, S1, S2, )
-
-  # TODO: Split this into two parts: one for Hss, one for normal matrices
-  # TODO: move this into it's own block for performance
-  if typeof(S1) <: HssMatrix || typeof(S2) <: HssMatrix
-    # TODO: check that the blocking is actually
-    rcl1, ccl1 = cluster(S1.A11)
-    rcl2, ccl2 = cluster(S2.A11)
-    # extreact generators of children Schur complements
-    Uint1, Vint1 = generators(S1.A11)
-    Uint2, Vint2 = generators(S2.A11)
-    Ubnd1, Vbnd1 = generators(S1.A22)
-    Ubnd2, Vbnd2 = generators(S2.A22)
-    Uint1 = Uint1*S1.B12
-    Uint2 = Uint2*S2.B12
-    Ubnd1 = Ubnd1*S1.B21
-    Ubnd2 = Ubnd2*S2.B21
-    # form the blocks
-    Aii = BlockMatrix(S1.A11, hss(A[int1, int2], rcl1, ccl2, atol=atol, rtol=rtol), hss(A[int2, int1], rcl2, ccl1, atol=atol, rtol=rtol), S2.A11) # check hssranks of the offdiagonal guys
-    Aib = BlockMatrix(LowRankMatrix(Uint1, Vbnd1), A[int1, bnd2], A[int2, bnd1], LowRankMatrix(Uint2, Vbnd2))
-    Abi = BlockMatrix(LowRankMatrix(Ubnd1, Vint1), A[bnd1, int2], A[bnd2, int1], LowRankMatrix(Ubnd2, Vint2))
-    Abb = BlockMatrix(S1.A22, A[bnd1, bnd2], A[bnd2, bnd1], S2.A22)
-  else # save everything densely
-    Aii = BlockMatrix(S1[1:ni1, 1:ni1], A[int1, int2], A[int2, int1], S2[1:ni2, 1:ni2])
-    Aib = BlockMatrix(S1[1:ni1, ni1+1:ni1+nb1], A[int1, bnd2], A[int2, bnd1], S2[1:ni2, ni2+1:ni2+nb2])
-    Abi = BlockMatrix(S1[ni1+1:ni1+nb1, 1:ni1], A[bnd1, int2], A[bnd2, int1], S2[ni2+1:ni2+nb2, 1:ni2])
-    Abb = BlockMatrix(S1[ni1+1:ni1+nb1, ni1+1:ni1+nb1], A[bnd1, bnd2], A[bnd2, bnd1], S2[ni2+1:ni2+nb2, ni2+1:ni2+nb2])
-  end
+  Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
 
   # Form the Factorization by forming the Gauss transforms and the Schur complements
   if cmpflag
     # build operators
     Lmul = (y, _, x) ->  y = Abi*(Aii\x); Lmulc = (y, _, x) ->  y = ((x'*Abi)/Aii)'
-    Lop = LinearOperator{T}(nb1+nb2, ni1+ni2, Lmul, Lmulc, nothing);
+    Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing);
     Rmul = (y, _, x) ->  y = Aii\(Aib*x); Rmulc = (y, _, x) ->  y = ((x'/Aii)*Aib)'
-    Rop = LinearOperator{T}(ni1+ni2, nb1+nb2, Rmul, Rmulc, nothing);
+    Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing);
     # perform the sampling # TODO: replace this with c_tol
     F = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
     L = LowRankMatrix(F.Q, collect(F.R[:,invperm(F.p)]'))
@@ -151,4 +120,33 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   return F
 
   # to compress or not to compress
+end
+
+function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::AbstractMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64) where T
+  ni1 = length(int1); nb1 = length(bnd1)
+  ni2 = length(int2); nb2 = length(bnd2)
+  Aii = BlockMatrix(S1[1:ni1, 1:ni1], A[int1, int2], A[int2, int1], S2[1:ni2, 1:ni2])
+  Aib = BlockMatrix(S1[1:ni1, ni1+1:ni1+nb1], A[int1, bnd2], A[int2, bnd1], S2[1:ni2, ni2+1:ni2+nb2])
+  Abi = BlockMatrix(S1[ni1+1:ni1+nb1, 1:ni1], A[bnd1, int2], A[bnd2, int1], S2[ni2+1:ni2+nb2, 1:ni2])
+  Abb = BlockMatrix(S1[ni1+1:ni1+nb1, ni1+1:ni1+nb1], A[bnd1, bnd2], A[bnd2, bnd1], S2[ni2+1:ni2+nb2, ni2+1:ni2+nb2])
+  return Aii, Aib, Abi, Abb
+end
+
+function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64) where T
+  ni1 = length(int1); ni2 = length(int2); nb1 = length(bnd1); nb2 = length(bnd2)
+  # TODO: Split this into two parts: one for Hss, one for normal matrices
+  # TODO: move this into it's own block for performance
+  # TODO: check that the blocking is actually
+  rcl1, ccl1 = cluster(S1.A11); rcl2, ccl2 = cluster(S2.A11)
+  # extract generators of children Schur complements
+  Uint1, Vint1 = generators(S1.A11); Uint1 = Uint1*S1.B12
+  Uint2, Vint2 = generators(S2.A11); Uint2 = Uint2*S2.B12
+  Ubnd1, Vbnd1 = generators(S1.A22); Ubnd1 = Ubnd1*S1.B21
+  Ubnd2, Vbnd2 = generators(S2.A22); Ubnd2 = Ubnd2*S2.B21
+  # form the blocks
+  Aii = BlockMatrix(S1.A11, hss(A[int1, int2], rcl1, ccl2, atol=atol, rtol=rtol), hss(A[int2, int1], rcl2, ccl1, atol=atol, rtol=rtol), S2.A11) # check hssranks of the offdiagonal guys
+  Aib = BlockMatrix(LowRankMatrix(Uint1, Vbnd1), A[int1, bnd2], A[int2, bnd1], LowRankMatrix(Uint2, Vbnd2))
+  Abi = BlockMatrix(LowRankMatrix(Ubnd1, Vint1), A[bnd1, int2], A[bnd2, int1], LowRankMatrix(Ubnd2, Vint2))
+  Abb = BlockMatrix(S1.A22, A[bnd1, bnd2], A[bnd2, bnd1], S2.A22)
+  return Aii, Aib, Abi, Abb
 end
