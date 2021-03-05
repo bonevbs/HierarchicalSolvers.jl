@@ -14,12 +14,12 @@ include("../util/read_problem.jl")
 A, b, nd = read_problem("./test/test.mat")
 
 Fa = factor(A, nd, swlevel = 0)
-Fc = factor(A, nd, swlevel = -1, atol=1e-6, rtol=1e-6)
+Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
 xa = ldiv!(Fa, copy(b));
 xc = ldiv!(Fc, copy(b));
 
 println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
-println("rel. error without compression ", norm(A*xc-b)/norm(A\b))
+println("rel. error with compression ", norm(A*xc-b)/norm(A\b))
 
 # pind = postorder(nd)
 # spy(A[pind, pind])

@@ -81,8 +81,8 @@ end
 *(A::BlockMatrix, B::LowRankMatrix) = LowRankMatrix(A*B.U,B.V)
 *(A::LowRankMatrix, B::BlockMatrix) = LowRankMatrix(A.U,(A.V'*B)')
 
-\(A::BlockMatrix, B::AbstractMatrix) = ldiv!(similar(B), A, copy(B))
-/(A::AbstractMatrix, B::BlockMatrix) = rdiv!(similar(A), copy(A), B)
+#\(A::BlockMatrix, B::AbstractMatrix) = blockldiv!(similar(B), A, copy(B))
+#/(A::AbstractMatrix, B::BlockMatrix) = blockrdiv!(similar(A), copy(A), B)
 
 function \(A::BlockMatrix, B::BlockMatrix)
   size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
@@ -149,11 +149,12 @@ rdiv!(A::AbstractSparseMatrix, B::AbstractMatrix) = rdiv!(Matrix(A), B)
 rdiv!(A::AbstractSparseVector, B::AbstractMatrix) = rdiv!(Vector(A), B)
 
 # specialized routines for computing A \ B overwriting B
-ldiv!(A::BlockMatrix, B::AbstractMatrix) = B = ldiv!(similar(B), A, B)
-function ldiv!(Y::AbstractMatrix, A::BlockMatrix, B::AbstractMatrix)
+blockldiv!(A::BlockMatrix, B::AbstractMatrix; atol::Float64, rtol::Float64) = B = blockldiv!(similar(B), A, B; atol, rtol)
+function blockldiv!(Y::AbstractMatrix, A::BlockMatrix, B::AbstractMatrix; atol::Float64, rtol::Float64)
   m1,n1 = size(A.A11)
   if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
     S22 = A.A22 - A.A21*(A.A11\A.A12)
+    S22 = recompress!(S22, atol=atol, rtol=rtol)
   elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
     error("Not implemented yet")
   else
@@ -166,17 +167,17 @@ function ldiv!(Y::AbstractMatrix, A::BlockMatrix, B::AbstractMatrix)
   return Y
 end
 # compute B / A overwriting B
-rdiv!(A::BlockMatrix, B::AbstractMatrix) = A = rdiv!(similar(A), A, B)
-function rdiv!(Y::AbstractMatrix, A::AbstractMatrix, B::BlockMatrix)
+blockrdiv!(A::AbstractMatrix, B::BlockMatrix; atol::Float64, rtol::Float64) = A = blockrdiv!(similar(A), A, B; atol, rtol)
+function blockrdiv!(Y::AbstractMatrix, A::AbstractMatrix, B::BlockMatrix; atol::Float64, rtol::Float64)
   m1,n1 = size(B.A11)
   if ishss(B.A11) && ishss(B.A12) && ishss(B.A21) && ishss(B.A22)
     S22 = B.A22 - B.A21*(B.A11\B.A12)
+    S22 = recompress!(S22, atol=atol, rtol=rtol)
   elseif typeof(B.A11) <: HssMatrix && typeof(B.A22) <: HssMatrix
     error("Not implemented yet")
   else
     S22 = B.A22 .- B.A21*(B.A11\B.A12)
   end
-  typeof(B.A11)
   Y[:,1:m1] = A[:,1:m1]/B.A11
   Y[:,m1+1:end] = A[:,m1+1:end] .- Y[:,1:m1]*B.A12
   Y[:,m1+1:end] = Y[:,m1+1:end]/S22
