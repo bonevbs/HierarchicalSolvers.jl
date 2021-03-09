@@ -15,6 +15,7 @@ A, b, nd = read_problem("./test/test.mat")
 
 Fa = factor(A, nd, swlevel = 0)
 Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
+@time Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
 xa = ldiv!(Fa, copy(b));
 xc = ldiv!(Fc, copy(b));
 
@@ -26,8 +27,8 @@ println("rel. error with compression ", norm(A*xc-b)/norm(A\b))
 
 # compare with fill-in reduction
 Pl = x -> solve!(Fc, x);
-x1, ch1 = gmres(A, b; Pr=Fa, reltol=1e-9, restart=20, log=true, maxiter=100)
-x2, ch2 = gmres(A, b; Pr=Fc, reltol=1e-9, restart=20, log=true, maxiter=100)
+x1, ch1 = gmres(A, b; Pr=Fa, reltol=1e-9, restart=20, log=true, maxiter=5)
+x2, ch2 = gmres(A, b; Pr=Fc, reltol=1e-9, restart=20, log=true, maxiter=5)
 
 plot()
 plot!(ch1[:resnorm], yaxis=:log)

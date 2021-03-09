@@ -1,6 +1,6 @@
 ### routines to generate the factorization
 # Written by Boris Bonev, Feb. 2021
-using Infiltrator
+
 ## Factorization routine
 function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions=SolverOptions(T);  args...) where T
   opts = copy(opts; args...)
@@ -55,83 +55,94 @@ end
 # recursive definition of the internal factorization routine
 function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, level::Int; swlevel::Int, atol::Float64, rtol::Float64, leafsize::Int) where T
   if isleaf(nd)
-    F = _factor_leaf(A, nd, nd_loc, level≤swlevel; atol, rtol, leafsize)
+    F = _factor_leaf(A, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize)
   elseif isbranch(nd)
     Fl = _factor(A, nd.left, nd_loc.left, level+1; swlevel, atol, rtol, leafsize)
     Fr = _factor(A, nd.right, nd_loc.right, level+1; swlevel, atol, rtol, leafsize)
-    F = _factor_branch(A, Fl, Fr, nd, nd_loc, level≤swlevel; atol, rtol, leafsize)
+    F = _factor_branch(A, Fl, Fr, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize)
   else
     throw(ErrorException("Expected nested dissection to be a binary tree. Found a node with only one child."))  
   end
   return F
 end
 
-function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, cmpflag::Bool; atol::Float64, rtol::Float64, leafsize::Int) where T
+# factor leaf node without compressing it
+function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; atol::Float64, rtol::Float64, leafsize::Int) where T
   int = nd.int; bnd = nd.bnd;
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
-
   D = A[int, int]
   L = A[bnd, int] / D
   R = D \ A[int, bnd]
   S = zeros(T, length(bnd), length(bnd))
   perm = [int_loc; bnd_loc]
-  S[invperm(perm), invperm(perm)] .= A[bnd, bnd] .- A[bnd, int] * R
-  if cmpflag
-    cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
-    hssS = compress(S, cl, cl, atol=atol, rtol=rtol)
-    F = FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
-  else
-    F = FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
-  end
-  return F
+  S[invperm(perm), invperm(perm)] = A[bnd, bnd] .- A[bnd, int] * R
+  return FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
 end
 
-# this is where the magic happens
-function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, cmpflag::Bool; atol::Float64, rtol::Float64, leafsize::Int) where T
+# factor leaf node and compress to HSS form
+function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int) where T
+  int = nd.int; bnd = nd.bnd;
+  int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
+  D = A[int, int]
+  L = A[bnd, int] / D
+  R = D \ A[int, bnd]
+  S = zeros(T, length(bnd), length(bnd))
+  perm = [int_loc; bnd_loc]
+  S[invperm(perm), invperm(perm)] = A[bnd, bnd] .- A[bnd, int] * R
+  cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
+  hssS = compress(S, cl, cl, atol=atol, rtol=rtol)
+  return FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
+end
+
+# factor branch node without compressing it
+function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; atol::Float64, rtol::Float64, leafsize::Int) where T
   int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd]; int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
 
   Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
 
-  # Form the Factorization by forming the Gauss transforms and the Schur complements
-  if cmpflag
-    # build operators
-    Lmul = (y, _, x) ->  y = Abi*blockldiv!(Aii, x; atol, rtol)
-    Lmulc = (y, _, x) ->  y = blockrdiv!((x'*Abi), Aii; atol, rtol)'
-    Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing);
-    Rmul = (y, _, x) ->  y = blockldiv!(Aii, (Aib*x); atol, rtol)
-    Rmulc = (y, _, x) ->  y = (blockrdiv!(x', Aii; atol, rtol)*Aib)'
-    Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing);
-    #@infiltrate
-    # use randomized compression to get the low-rank representation
-    # TODO: replace this with c_tol
-    F = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
-    L = LowRankMatrix(F.Q, collect(F.R[:,invperm(F.p)]'))
-    F = pqrfact(Rop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
-    R = LowRankMatrix(F.Q, collect(F.R[:,invperm(F.p)]'))
-
-    # use randomized compression to compute the HSS form of the Schur complement
-    cl = bisection_cluster((length(int_loc), length(int_loc)+length(bnd_loc)); leafsize)
-    perm = [nd_loc.int; nd_loc.bnd]; iperm = invperm(perm)
-    U = Abi*R
-    Smul = (y, _, x) -> _sample_schur!(y, Abb, U, x, iperm)
-    Smulc = (y, _, x) -> _sample_schur!(y, Abb', U', x, iperm)
-    Sidx = (i,j) -> Abb[perm[i], perm[j]] - U.U[perm[i], :]*U.V[perm[j],:]'
-    Sop = LinearMap{T}(size(Abb)..., Smul, Smulc, Sidx, nothing)
-    hssS = hss(Sop, cl, cl, atol=atol, rtol=rtol)
-    #S = Matrix(Abb) - Matrix(U)
-    #@infiltrate
-    F = FactorNode(Matrix(Aii), hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
-  else
-    L = blockrdiv!(Abi, Aii; atol, rtol)
-    R = blockldiv!(Aii, Aib; atol, rtol)
-    S = Abb - Abi*R
-    perm = [nd_loc.int; nd_loc.bnd];
-    F = FactorNode(Matrix(Aii), S[perm,perm], Matrix(L), Matrix(R), nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
-  end
-  return F
+  L = blockrdiv!(Abi, Aii; atol, rtol)
+  R = blockldiv!(Aii, Aib; atol, rtol)
+  S = Abb - Abi*R
+  perm = [nd_loc.int; nd_loc.bnd];
+  return FactorNode(Matrix(Aii), S[perm,perm], Matrix(L), Matrix(R), nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
 end
 
+# factor node matrix free and compress it
+function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int) where T
+  int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd]; int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
+  int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
+
+  Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
+
+  # build operators
+  Lmul = (y, _, x) ->  y = Abi*blockldiv!(Aii, x; atol, rtol)
+  Lmulc = (y, _, x) ->  y = blockrdiv!((x'*Abi), Aii; atol, rtol)'
+  Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing);
+  Rmul = (y, _, x) ->  y = blockldiv!(Aii, (Aib*x); atol, rtol)
+  Rmulc = (y, _, x) ->  y = (blockrdiv!(x', Aii; atol, rtol)*Aib)'
+  Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing);
+  #@infiltrate
+  # use randomized compression to get the low-rank representation
+  # TODO: replace this with c_tol
+  F = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
+  L = LowRankMatrix(F.Q, collect(F.R[:,invperm(F.p)]'))
+  F = pqrfact(Rop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
+  R = LowRankMatrix(F.Q, collect(F.R[:,invperm(F.p)]'))
+
+  # use randomized compression to compute the HSS form of the Schur complement
+  cl = bisection_cluster((length(int_loc), length(int_loc)+length(bnd_loc)); leafsize)
+  perm = [nd_loc.int; nd_loc.bnd]; iperm = invperm(perm)
+  U = Abi*R
+  Smul = (y, _, x) -> _sample_schur!(y, Abb, U, x, iperm)
+  Smulc = (y, _, x) -> _sample_schur!(y, Abb', U', x, iperm)
+  Sidx = (i,j) -> Abb[perm[i], perm[j]] - U.U[perm[i], :]*U.V[perm[j],:]'
+  Sop = LinearMap{T}(size(Abb)..., Smul, Smulc, Sidx, nothing)
+  hssS = hss(Sop, cl, cl, atol=atol, rtol=rtol)
+  return FactorNode(Matrix(Aii), hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
+end
+
+# general routine for assembling the new block matrices
 function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::AbstractMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64) where T
   ni1 = length(int1); nb1 = length(bnd1)
   ni2 = length(int2); nb2 = length(bnd2)
@@ -142,6 +153,7 @@ function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::Abstr
   return Aii, Aib, Abi, Abb
 end
 
+# For HSS matrices we want to specialize the routine in order to exploit the pre-determined blocking which exposes interior DOFs
 function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64) where T
   ni1 = length(int1); ni2 = length(int2); nb1 = length(bnd1); nb2 = length(bnd2)
   # TODO: Split this into two parts: one for Hss, one for normal matrices

@@ -1,6 +1,8 @@
 ### 2x2 Block matrix structure. Convenience datastrucutre to hold our diagonal blocks for elimination.
 # Written by Boris Bonev, Feb. 2021
 
+using Infiltrator
+
 # 2x2 block matrix that can hold any type of 
 struct BlockMatrix{T, T11 <: AbstractMatrix{T}, T12 <: AbstractMatrix{T}, T21 <: AbstractMatrix{T}, T22 <: AbstractMatrix{T}} <: AbstractMatrix{T}
   A11::T11
@@ -25,36 +27,49 @@ size(B::BlockMatrix, dim::Int) = size(B)[dim]
 copy(B::BlockMatrix) = BlockMatrix(copy(B.A11), copy(B.A12), copy(B.A21), copy(B.A22))
 
 # getindex
-# this definition might be inefficient, but as it is mainly for display, this is fine
-function _getindex(B::BlockMatrix, i::Int, j::Int)
-  m1,n1 = size(B.A11)
-  ret = zero(eltype(B))
-  if 1 ≤ i ≤ m1
-    if 1 ≤ j ≤ n1
-      ret = B.A11[i,j]
-    else
-      ret = B.A12[i,j-n1]
-    end
-  else
-    if 1 ≤ j ≤ n1
-      ret = B.A21[i-m1,j]
-    else
-      ret = B.A22[i-m1,j-n1]
-    end
-  end
-  return ret
+# getindex(B::BlockMatrix, i::Int, j::Int) = getindex(B, [i], [j])[1]
+getindex(B::BlockMatrix, i::Int, j::AbstractRange) = getindex(B, [i], j)[:]
+getindex(B::BlockMatrix, i::AbstractRange, j::Int) = getindex(B, i, [j])[:]
+getindex(B::BlockMatrix, i::AbstractRange, j::AbstractRange) = getindex(B, collect(i), collect(j))
+getindex(B::BlockMatrix, ::Colon, ::Colon) = full(B)
+getindex(B::BlockMatrix, i, ::Colon) = getindex(B, i, 1:size(B,2))
+getindex(B::BlockMatrix, ::Colon, j) = getindex(B, 1:size(B,1), j)
+function getindex(B::BlockMatrix, i::Vector{Int}, j::Vector{Int})
+  m1, n1 = size(B.A11)
+  A = Matrix{eltype(B)}(undef, length(i), length(j))
+  if length(i) == 0 || length(j) == 0 return A end
+  ii1 = i .<= m1; i1 = i[ii1]
+  ii2 = i .> m1; i2 = i[ii2] .- m1
+  jj1 = j .<= n1; j1 = j[jj1]
+  jj2 = j .> n1; j2 = j[jj2] .- n1
+  A[ii1, jj1] = B.A11[i1, j1]
+  A[ii1, jj2] = B.A12[i1, j2]
+  A[ii2, jj1] = B.A21[i2, j1]
+  A[ii2, jj2] = B.A22[i2, j2]
+  return A
 end
 function getindex(B::BlockMatrix, i::Int, j::Int)
-  m,n = size(B)
-  if 1 ≤ i ≤ m && 1 ≤ j ≤ n
-      _getindex(B,i,j)
+  m1,n1 = size(B.A11)
+  if !(1 ≤ i ≤ size(B,1)) || !(1 ≤ j ≤ size(B,2)); throw(BoundsError("Index out of bounds")); end
+  if 1 ≤ i ≤ m1
+    if 1 ≤ j ≤ n1
+      return B.A11[i,j]
+    else
+      return B.A12[i,j-n1]
+    end
   else
-      throw(BoundsError())
+    if 1 ≤ j ≤ n1
+      return B.A21[i-m1,j]
+    else
+      return B.A22[i-m1,j-n1]
+    end
   end
 end
-getindex(B::BlockMatrix, i::Int, jr::AbstractRange) = transpose(eltype(B)[B[i,j] for j=jr])
-getindex(B::BlockMatrix, ir::AbstractRange, j::Int) = eltype(B)[B[i,j] for i=ir]
-getindex(B::BlockMatrix, ir::AbstractRange, jr::AbstractRange) = eltype(B)[B[i,j] for i=ir,j=jr]
+
+
+# getindex(B::BlockMatrix, i::Int, jr::AbstractRange) = transpose(eltype(B)[B[i,j] for j=jr])
+# getindex(B::BlockMatrix, ir::AbstractRange, j::Int) = eltype(B)[B[i,j] for i=ir]
+# getindex(B::BlockMatrix, ir::AbstractRange, jr::AbstractRange) = eltype(B)[B[i,j] for i=ir,j=jr]
 Matrix(B::BlockMatrix) = [Matrix(B.A11) Matrix(B.A12); Matrix(B.A21) Matrix(B.A22)]
 
 # Some basic linear algebra routines
