@@ -4,7 +4,7 @@ using MAT
 
 function read_problem(filepath)
   ## Read the problem from MAT file
-  file = matopen("./test/test.mat")
+  file = matopen(filepath)
   elim_tree = read(file, "elim_tree") # note that this does NOT introduce a variable ``varname`` into scope
   A = read(file, "A")
   b = read(file, "b")

@@ -13,20 +13,22 @@ using HssMatrices
 include("../util/read_problem.jl")
 A, b, nd = read_problem("./test/test.mat")
 
+println("Computing factorization without compression...")
 Fa = factor(A, nd, swlevel = 0)
-Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
-@time Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
+@time Fa = factor(A, nd, swlevel = 0)
 xa = ldiv!(Fa, copy(b));
-xc = ldiv!(Fc, copy(b));
-
 println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
+
+println("Computing factorization with compression...")
+Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
+@profview Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
+xc = ldiv!(Fc, copy(b));
 println("rel. error with compression ", norm(A*xc-b)/norm(A\b))
 
 # pind = postorder(nd)
 # spy(A[pind, pind])
 
 # compare with fill-in reduction
-Pl = x -> solve!(Fc, x);
 x1, ch1 = gmres(A, b; Pr=Fa, reltol=1e-9, restart=20, log=true, maxiter=5)
 x2, ch2 = gmres(A, b; Pr=Fc, reltol=1e-9, restart=20, log=true, maxiter=5)
 

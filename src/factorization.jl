@@ -1,6 +1,8 @@
 ### routines to generate the factorization
 # Written by Boris Bonev, Feb. 2021
 
+using Infiltrator
+
 ## Factorization routine
 function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions=SolverOptions(T);  args...) where T
   opts = copy(opts; args...)
@@ -9,7 +11,7 @@ function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions
   nd_loc = symfact!(nd)
   nd_loc.int = collect(1:length(nd.bnd))
   nd_loc.bnd = Vector{Int}()
-  F = _factor(A, nd, nd_loc, 1; swlevel, opts.atol, opts.rtol, opts.leafsize)
+  F = _factor(A, nd, nd_loc, 1; swlevel, opts.atol, opts.rtol, opts.leafsize, opts.verbose)
   return F
 end
 
@@ -53,12 +55,14 @@ function _symfact!(nd::NestedDissection, level)
 end
 
 # recursive definition of the internal factorization routine
-function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, level::Int; swlevel::Int, atol::Float64, rtol::Float64, leafsize::Int) where T
+function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, level::Int; swlevel::Int, atol::Float64, rtol::Float64, leafsize::Int, verbose::Bool) where T
   if isleaf(nd)
+    verbose && println("Factoring leafnode at level ", level)
     F = _factor_leaf(A, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize)
   elseif isbranch(nd)
-    Fl = _factor(A, nd.left, nd_loc.left, level+1; swlevel, atol, rtol, leafsize)
-    Fr = _factor(A, nd.right, nd_loc.right, level+1; swlevel, atol, rtol, leafsize)
+    Fl = _factor(A, nd.left, nd_loc.left, level+1; swlevel, atol, rtol, leafsize, verbose)
+    Fr = _factor(A, nd.right, nd_loc.right, level+1; swlevel, atol, rtol, leafsize, verbose)
+    verbose && println("Factoring branchnode at level ", level)
     F = _factor_branch(A, Fl, Fr, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize)
   else
     throw(ErrorException("Expected nested dissection to be a binary tree. Found a node with only one child."))  
@@ -122,7 +126,6 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   Rmul = (y, _, x) ->  y = blockldiv!(Aii, (Aib*x); atol, rtol)
   Rmulc = (y, _, x) ->  y = (blockrdiv!(x', Aii; atol, rtol)*Aib)'
   Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing);
-  #@infiltrate
   # use randomized compression to get the low-rank representation
   # TODO: replace this with c_tol
   F = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
@@ -156,8 +159,6 @@ end
 # For HSS matrices we want to specialize the routine in order to exploit the pre-determined blocking which exposes interior DOFs
 function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64) where T
   ni1 = length(int1); ni2 = length(int2); nb1 = length(bnd1); nb2 = length(bnd2)
-  # TODO: Split this into two parts: one for Hss, one for normal matrices
-  # TODO: move this into it's own block for performance
   # TODO: check that the blocking is actually
   rcl1, ccl1 = cluster(S1.A11); rcl2, ccl2 = cluster(S2.A11)
   # extract generators of children Schur complements
@@ -174,4 +175,10 @@ function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{
 end
 
 # function for correctly applying the Schur complement
-_sample_schur!(y::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, x::AbstractMatrix, iperm::Vector{Int}) = y[iperm,:] = A*x[iperm,:] - B*x[iperm,:]
+# TODO: this can proabbly be accelerated even further by paying attention to allocation and using mul!
+function _sample_schur!(y::AbstractMatrix{T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}, x::AbstractMatrix{T}, iperm::Vector{Int}) where T
+  #mul!(@view(y[iperm,:]), A, @view(x[iperm,:]), 1., 0.)
+  #mul!(@view(y[iperm,:]), B, @view(x[iperm,:]), -1., 1.)
+  y[iperm,:] .= A*x[iperm,:] .- B*x[iperm,:]
+  return y
+end

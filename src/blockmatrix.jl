@@ -1,8 +1,6 @@
 ### 2x2 Block matrix structure. Convenience datastrucutre to hold our diagonal blocks for elimination.
 # Written by Boris Bonev, Feb. 2021
 
-using Infiltrator
-
 # 2x2 block matrix that can hold any type of 
 struct BlockMatrix{T, T11 <: AbstractMatrix{T}, T12 <: AbstractMatrix{T}, T21 <: AbstractMatrix{T}, T22 <: AbstractMatrix{T}} <: AbstractMatrix{T}
   A11::T11
@@ -66,6 +64,10 @@ function getindex(B::BlockMatrix, i::Int, j::Int)
   end
 end
 
+# adjoint/transpose
+adjoint(B::BlockMatrix) = BlockMatrix(adjoint(B.A11), adjoint(B.A21), adjoint(B.A12), adjoint(B.A22))
+transpose(B::BlockMatrix) = BlockMatrix(transpose(B.A11), transpose(B.A21), transpose(B.A12), transpose(B.A22))
+
 
 # getindex(B::BlockMatrix, i::Int, jr::AbstractRange) = transpose(eltype(B)[B[i,j] for j=jr])
 # getindex(B::BlockMatrix, ir::AbstractRange, j::Int) = eltype(B)[B[i,j] for i=ir]
@@ -78,23 +80,48 @@ function *(A::BlockMatrix, B::BlockMatrix)
   size(A.A11,2) == size(B.A11,1) ||  throw(DimensionMismatch("Block rows of B do not match block columns of A. Expected $(size(A.A11, 2)), got $(size(B.A11, 1))"))
   BlockMatrix(A.A11*B.A11 + A.A12*B.A21, A.A11*B.A12 + A.A12*B.A22, A.A21*B.A11 + A.A22*B.A21, A.A21*B.A12 + A.A22*B.A22)
 end
-function *(A::BlockMatrix, B::AbstractMatrix)
-  size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
-  m1, n1 = size(A.A11)
-  [A.A11*B[1:n1, :] .+ A.A12*B[n1+1:end, :]; A.A21*B[1:n1, :] .+ A.A22*B[n1+1:end, :]]
-end
-function *(A::AbstractMatrix, B::BlockMatrix)
-  size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
-  m1, n1 = size(B.A11)
-  [A[:, 1:m1]*B.A11 .+ A[:, m1+1:end]*B.A21 A[:, 1:m1]*B.A12 .+ A[:, m1+1:end]*B.A22]
-end
+*(A::BlockMatrix, B::AbstractMatrix) = mul!(similar(B, size(A,1), size(B,2)), A, B, 1., 0.)
+*(A::AbstractMatrix, B::BlockMatrix) = mul!(similar(A, size(A,1), size(B,2)), A, B, 1., 0.)
 function *(A::BlockMatrix, v::AbstractVector)
   size(A,2) == length(v) ||  throw(DimensionMismatch("Dimension of v does not match second dimension of A. Expected $(size(A, 2)), got $(length(v))"))
   m1, n1 = size(A.A11)
   [A.A11*v[1:n1] .+ A.A12*v[n1+1:end]; A.A21*v[1:n1] .+ A.A22*v[n1+1:end]]
 end
+
+function mul!(C::AbstractMatrix, A::BlockMatrix, B::AbstractMatrix, α::Real, β::Real)
+  size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
+  size(C) == (size(A,1), size(B,2)) ||  throw(DimensionMismatch("Dimensions of C don't match up with A and B."))
+  m1, n1 = size(A.A11);
+  C1 = @view(C[1:m1, :])
+  C2 = @view(C[m1+1:end, :])
+  B1 = @view(B[1:n1, :])
+  B2 = @view(B[n1+1:end, :])
+  mul!(C1, A.A11, B1, α, β)
+  mul!(C1, A.A12, B2, α, 1.)
+  mul!(C2, A.A21, B1, α, β)
+  mul!(C2, A.A22, B2, α, 1.)
+  return C
+end
+function mul!(C::AbstractMatrix, A::AbstractMatrix, B::BlockMatrix, α::Real, β::Real)
+  size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
+  size(C) == (size(A,1), size(B,2)) ||  throw(DimensionMismatch("Dimensions of C don't match up with A and B."))
+  m1, n1 = size(B.A11);
+  C1 = @view(C[:, 1:n1])
+  C2 = @view(C[:, n1+1:end])
+  A1 = @view(A[:, 1:m1])
+  A2 = @view(A[:, m1+1:end])
+  mul!(C1, A1, B.A11, α, β)
+  mul!(C1, A2, B.A21, α, 1.)
+  mul!(C2, A1, B.A12, α, β)
+  mul!(C2, A2, B.A22, α, 1.)
+  return C
+end
+
+# make sure block matrices play nice with low-rank matrices
 *(A::BlockMatrix, B::LowRankMatrix) = LowRankMatrix(A*B.U,B.V)
 *(A::LowRankMatrix, B::BlockMatrix) = LowRankMatrix(A.U,(A.V'*B)')
+
+
 
 #\(A::BlockMatrix, B::AbstractMatrix) = blockldiv!(similar(B), A, copy(B))
 #/(A::AbstractMatrix, B::BlockMatrix) = blockrdiv!(similar(A), copy(A), B)

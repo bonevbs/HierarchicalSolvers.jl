@@ -12,7 +12,7 @@ module HierarchicalSolvers
   using DataStructures
 
   import Base: getproperty, setproperty!, size, eltype, getindex, *, /, \, copy
-  import LinearAlgebra: ldiv!, rdiv!
+  import LinearAlgebra: ldiv!, rdiv!, mul!
   import HssMatrices.isleaf, HssMatrices.isbranch
 
   # HierarchicalSolvers.jl
@@ -20,7 +20,7 @@ module HierarchicalSolvers
   # nesteddissection.jl
   export NDNode, NestedDissection, parse_elimtree, postorder, getinterior
   # blockmatrix.jl
-  export BlockMatrix
+  #export BlockMatrix, mul!
   # factornode.jl
   export FactorNode, solve, solve!
   # factorization.jl
@@ -33,6 +33,7 @@ module HierarchicalSolvers
     rtol::Float64
     c_tol::Float64
     leafsize::Int
+    verbose::Bool
   end
   
   # set default values
@@ -44,6 +45,7 @@ module HierarchicalSolvers
       1e-6,   # relative compression tolerance
       0.5,    # relative factor to tune low-rank compression tolerance w.r.t HSS compression tolerance
       32,     # HSS leaf size
+      false,  # output Important information
       )
     for (key, value) in args
       setfield!(opts, key, value)
