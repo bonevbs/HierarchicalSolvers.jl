@@ -1,8 +1,6 @@
 ### routines to generate the factorization
 # Written by Boris Bonev, Feb. 2021
 
-using Infiltrator
-
 ## Factorization routine
 function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions=SolverOptions(T);  args...) where T
   opts = copy(opts; args...)
@@ -177,8 +175,8 @@ end
 # function for correctly applying the Schur complement
 # TODO: this can proabbly be accelerated even further by paying attention to allocation and using mul!
 function _sample_schur!(y::AbstractMatrix{T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}, x::AbstractMatrix{T}, iperm::Vector{Int}) where T
-  #mul!(@view(y[iperm,:]), A, @view(x[iperm,:]), 1., 0.)
-  #mul!(@view(y[iperm,:]), B, @view(x[iperm,:]), -1., 1.)
-  y[iperm,:] .= A*x[iperm,:] .- B*x[iperm,:]
+  mul!(@view(y[iperm,:]), A, @view(x[iperm,:]), 1., 0.)
+  mul!(@view(y[iperm,:]), B, @view(x[iperm,:]), -1., 1.)
+  #y[iperm,:] .= A*x[iperm,:] .- B*x[iperm,:]
   return y
 end

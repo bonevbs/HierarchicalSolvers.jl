@@ -5,22 +5,22 @@ __precompile__()
 module HierarchicalSolvers
 
   using AbstractTrees
-  using HssMatrices
   using LinearAlgebra
+  using HssMatrices
   using SparseArrays
   using LowRankApprox
   using DataStructures
 
-  import Base: getproperty, setproperty!, size, eltype, getindex, *, /, \, copy
+  import Base: getproperty, setproperty!, size, eltype, getindex, *, /, \, copy, adjoint, transpose
   import LinearAlgebra: ldiv!, rdiv!, mul!
-  import HssMatrices.isleaf, HssMatrices.isbranch
+  import HssMatrices: isleaf, isbranch
 
   # HierarchicalSolvers.jl
   export SolverOptions
   # nesteddissection.jl
   export NDNode, NestedDissection, parse_elimtree, postorder, getinterior
+  # lowrankextensions.jl
   # blockmatrix.jl
-  #export BlockMatrix, mul!
   # factornode.jl
   export FactorNode, solve, solve!
   # factorization.jl
@@ -74,6 +74,7 @@ module HierarchicalSolvers
   end
 
   include("nesteddissection.jl")
+  include("lowrankextensions.jl")
   include("blockmatrix.jl")
   include("factornode.jl")
   include("factorization.jl")
