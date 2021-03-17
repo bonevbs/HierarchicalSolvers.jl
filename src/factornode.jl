@@ -1,8 +1,6 @@
 ### Definitions of the solver/preconditioner datastructure
 # Written by Boris Bonev, Feb. 2021
 
-using Infiltrator
-
 # datastructure to hold the hiearchical factorization
 mutable struct FactorNode{T<:Number} <: Factorization{T}
   D::Union{Matrix{T}, SparseMatrixCSC{T}, BlockMatrix{T}}

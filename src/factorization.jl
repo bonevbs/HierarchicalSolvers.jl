@@ -73,8 +73,8 @@ function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::Nested
   int = nd.int; bnd = nd.bnd;
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
   D = A[int, int]
-  L = A[bnd, int] / D
-  R = D \ A[int, bnd]
+  L = convert(Matrix, A[bnd, int]) / D
+  R = D \ convert(Matrix, A[int, bnd])
   S = zeros(T, length(bnd), length(bnd))
   perm = [int_loc; bnd_loc]
   S[invperm(perm), invperm(perm)] = A[bnd, bnd] .- A[bnd, int] * R
@@ -86,8 +86,8 @@ function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::Nested
   int = nd.int; bnd = nd.bnd;
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
   D = A[int, int]
-  L = A[bnd, int] / D
-  R = D \ A[int, bnd]
+  L = convert(Matrix, A[bnd, int]) / D
+  R = D \ convert(Matrix, A[int, bnd])
   S = zeros(T, length(bnd), length(bnd))
   perm = [int_loc; bnd_loc]
   S[invperm(perm), invperm(perm)] = A[bnd, bnd] .- A[bnd, int] * R
@@ -103,8 +103,8 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
 
   Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
 
-  L = blockrdiv!(Abi, Aii; atol, rtol)
-  R = blockldiv!(Aii, Aib; atol, rtol)
+  L = blockrdiv(Abi, Aii)
+  R = blockldiv(Aii, Aib)
   S = Abb - Abi*R
   perm = [nd_loc.int; nd_loc.bnd];
   return FactorNode(Matrix(Aii), S[perm,perm], Matrix(L), Matrix(R), nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
@@ -175,8 +175,8 @@ end
 # function for correctly applying the Schur complement
 # TODO: this can proabbly be accelerated even further by paying attention to allocation and using mul!
 function _sample_schur!(y::AbstractMatrix{T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}, x::AbstractMatrix{T}, iperm::Vector{Int}) where T
-  mul!(@view(y[iperm,:]), A, @view(x[iperm,:]), 1., 0.)
-  mul!(@view(y[iperm,:]), B, @view(x[iperm,:]), -1., 1.)
-  #y[iperm,:] .= A*x[iperm,:] .- B*x[iperm,:]
+  #mul!(@view(y[iperm,:]), A, @view(x[iperm,:]), 1., 0.)
+  #mul!(@view(y[iperm,:]), B, @view(x[iperm,:]), -1., 1.)
+  y[iperm,:] = A*x[iperm,:] - B*x[iperm,:]
   return y
 end
