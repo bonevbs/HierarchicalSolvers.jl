@@ -23,7 +23,7 @@ println("Read in $(size(A)) matrix.")
 
 println("Computing factorization with compression...")
 Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
-@profview Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
+@time Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
 xc = ldiv!(Fc, copy(b));
 println("rel. error with compression ", norm(A*xc-b)/norm(A\b))
 
