@@ -122,11 +122,12 @@ function blockrdiv!(Y::Matrix, A::Matrix, B::BlockMatrix; atol::Float64, rtol::F
   if ishss(B.A11) && ishss(B.A12) && ishss(B.A21) && ishss(B.A22)
     S22 = B.A22 - B.A21*(B.A11\B.A12)
     S22 = recompress!(S22, atol=atol, rtol=rtol)
-  elseif typeof(B.A11) <: HssMatrix && typeof(B.A22) <: HssMatrix
+  elseif ishss(B.A11) || ishss(B.A22)
     error("Not implemented yet")
   else
     S22 = B.A22 .- B.A21*(B.A11\convert(Matrix, B.A12))
   end
+  #if ishss(B.A11); @infiltrate; end
   Y[:,1:m1] = A[:,1:m1]/B.A11
   Y[:,m1+1:end] = A[:,m1+1:end] - Y[:,1:m1]*B.A12
   Y[:,m1+1:end] = Y[:,m1+1:end]/S22
@@ -140,7 +141,7 @@ function blockldiv(A::BlockMatrix, B::BlockMatrix)
   # Form the Schur complement
   if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
     S22 = A.A22 - A.A21*(A.A11\A.A12)
-  elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
+  elseif ishss(A.A11) || ishss(A.A22)
     error("Not implemented yet")
   else
     S22 = A.A22 - A.A21*(A.A11\convert(Matrix, A.A12))

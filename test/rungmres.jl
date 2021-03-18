@@ -15,15 +15,15 @@ include("../util/read_problem.jl")
 A, b, nd = read_problem("./test/poisson2d_p1_h64.mat")
 println("Read in $(size(A)) matrix.")
 
-#println("Computing factorization without compression...")
-#Fa = factor(A, nd, swlevel = 0)
-#@time Fa = factor(A, nd, swlevel = 0)
-#xa = ldiv!(Fa, copy(b));
-#println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
+# println("Computing factorization without compression...")
+# Fa = factor(A, nd, swlevel = 0)
+# @time Fa = factor(A, nd, swlevel = 0)
+# xa = ldiv!(Fa, copy(b));
+# println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
 
 println("Computing factorization with compression...")
 Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
-@time Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
+@profview Fc = factor(A, nd, swlevel = -2, atol=1e-6, rtol=1e-6)
 xc = ldiv!(Fc, copy(b));
 println("rel. error with compression ", norm(A*xc-b)/norm(A\b))
 
