@@ -4,4 +4,4 @@ Hierarchical solvers is an approximate sparse direct solver, entirely written in
 
 ## Cite as
 
-*Bonev, Boris; Hesthaven, Jan S.* "A hierarchical preconditioner for wave problems in quasilinear complexity." Under Review. (https://infoscience.epfl.ch/record/279971/files/article.pdf)[https://infoscience.epfl.ch/record/279971/files/article.pdf]
+*Bonev, Boris; Hesthaven, Jan S.* "A hierarchical preconditioner for wave problems in quasilinear complexity." Under Review. [https://infoscience.epfl.ch/record/279971/files/article.pdf](https://infoscience.epfl.ch/record/279971/files/article.pdf)
