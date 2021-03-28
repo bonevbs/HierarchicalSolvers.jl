@@ -35,6 +35,7 @@ function _getinterior!(nd::NestedDissection, interior::Vector{Int})
   if !isnothing(nd.right) interior = _getinterior!(nd.right, interior) end
   return [interior; nd.int]
 end
+getboundary(nd::NestedDissection) = nd.bnd
 
 # convenience function for reading in my own serialized elimination tree format
 # probably of little to no use to others

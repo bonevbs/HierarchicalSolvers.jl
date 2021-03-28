@@ -18,7 +18,7 @@ module HierarchicalSolvers
   # HierarchicalSolvers.jl
   export SolverOptions
   # nesteddissection.jl
-  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior
+  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior, getboundary
   # lowrankextensions.jl
   # blockmatrix.jl
   # factornode.jl
@@ -33,6 +33,8 @@ module HierarchicalSolvers
     rtol::Float64
     c_tol::Float64
     leafsize::Int
+    kest::Int
+    stepsize::Int
     verbose::Bool
   end
   
@@ -45,6 +47,8 @@ module HierarchicalSolvers
       1e-6,   # relative compression tolerance
       0.5,    # relative factor to tune low-rank compression tolerance w.r.t HSS compression tolerance
       32,     # HSS leaf size
+      30,     # rank estimate
+      10,     # stepsize
       false,  # output Important information
       )
     for (key, value) in args

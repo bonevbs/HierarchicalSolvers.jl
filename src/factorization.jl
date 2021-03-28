@@ -9,7 +9,7 @@ function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions
   nd_loc = symfact!(nd)
   nd_loc.int = collect(1:length(nd.bnd))
   nd_loc.bnd = Vector{Int}()
-  F = _factor(A, nd, nd_loc, 1; swlevel, opts.atol, opts.rtol, opts.leafsize, opts.verbose)
+  F = _factor(A, nd, nd_loc, 1; swlevel, opts.atol, opts.rtol, opts.leafsize, opts.kest, opts.stepsize, opts.verbose)
   return F
 end
 
@@ -53,15 +53,15 @@ function _symfact!(nd::NestedDissection, level)
 end
 
 # recursive definition of the internal factorization routine
-function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, level::Int; swlevel::Int, atol::Float64, rtol::Float64, leafsize::Int, verbose::Bool) where T
+function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, level::Int; swlevel::Int, atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
   if isleaf(nd)
     verbose && println("Factoring leafnode at level ", level)
     F = _factor_leaf(A, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize)
   elseif isbranch(nd)
-    Fl = _factor(A, nd.left, nd_loc.left, level+1; swlevel, atol, rtol, leafsize, verbose)
-    Fr = _factor(A, nd.right, nd_loc.right, level+1; swlevel, atol, rtol, leafsize, verbose)
+    Fl = _factor(A, nd.left, nd_loc.left, level+1; swlevel, atol, rtol, leafsize, kest, stepsize, verbose)
+    Fr = _factor(A, nd.right, nd_loc.right, level+1; swlevel, atol, rtol, leafsize, kest, stepsize, verbose)
     verbose && println("Factoring branchnode at level ", level)
-    F = _factor_branch(A, Fl, Fr, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize)
+    F = _factor_branch(A, Fl, Fr, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize, kest, stepsize, verbose)
   else
     throw(ErrorException("Expected nested dissection to be a binary tree. Found a node with only one child."))  
   end
@@ -69,7 +69,7 @@ function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDisse
 end
 
 # factor leaf node without compressing it
-function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; atol::Float64, rtol::Float64, leafsize::Int) where T
+function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; args...) where T
   int = nd.int; bnd = nd.bnd;
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
   D = A[int, int]
@@ -97,7 +97,7 @@ function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::Nested
 end
 
 # factor branch node without compressing it
-function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; atol::Float64, rtol::Float64, leafsize::Int) where T
+function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
   int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd]; int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
 
@@ -111,7 +111,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
 end
 
 # factor node matrix free and compress it
-function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int) where T
+function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
   int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd]; int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
 
@@ -139,12 +139,13 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   Smulc = (y, _, x) -> _sample_schur!(y, Abb', U', x, iperm)
   Sidx = (i,j) -> Abb[perm[i], perm[j]] - U.U[perm[i], :]*U.V[perm[j],:]'
   Sop = LinearMap{T}(size(Abb)..., Smul, Smulc, Sidx, nothing)
-  hssS = hss(Sop, cl, cl, atol=atol, rtol=rtol)
+  hssS = randcompress_adaptive(Sop, cl, cl; kest=kest, atol=atol, rtol=rtol, verbose=verbose)
+  #hssS = recompress!(hssS)
   return FactorNode(Matrix(Aii), hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
 end
 
 # general routine for assembling the new block matrices
-function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::AbstractMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64) where T
+function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::AbstractMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; args...) where T
   ni1 = length(int1); nb1 = length(bnd1)
   ni2 = length(int2); nb2 = length(bnd2)
   Aii = BlockMatrix(S1[1:ni1, 1:ni1], A[int1, int2], A[int2, int1], S2[1:ni2, 1:ni2])
@@ -155,10 +156,30 @@ function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::Abstr
 end
 
 # For HSS matrices we want to specialize the routine in order to exploit the pre-determined blocking which exposes interior DOFs
-function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64) where T
+function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64, verbose=false) where T
   ni1 = length(int1); ni2 = length(int2); nb1 = length(bnd1); nb2 = length(bnd2)
   # TODO: check that the blocking is actually
   rcl1, ccl1 = cluster(S1.A11); rcl2, ccl2 = cluster(S2.A11)
+  # equilibrate blocking, checks only rcl, as ccl should be compatible with rcl
+  if !compatible(rcl1, rcl2)
+    while !compatible(rcl1, rcl2)
+      if depth(rcl1) > depth(rcl2)
+        verbose && println("Pruning clusters of node 1")
+        rcl1 = prune_leaves!(rcl1); ccl1 = prune_leaves!(ccl1)
+        S1.A11 = prune_leaves!(S1.A11)
+      elseif depth(rcl1) < depth(rcl2)
+        verbose && println("Pruning clusters of node 2")
+        rcl2 = prune_leaves!(rcl2); ccl2 = prune_leaves!(ccl2)
+        S2.A11 = prune_leaves!(S2.A11)
+      else
+        verbose && println("Pruning both clusters")
+        rcl1 = prune_leaves!(rcl1); ccl1 = prune_leaves!(ccl1)
+        rcl2 = prune_leaves!(rcl2); ccl2 = prune_leaves!(ccl2)
+        S1.A11 = prune_leaves!(S1.A11)
+        S2.A11 = prune_leaves!(S2.A11)
+      end
+    end
+  end
   # extract generators of children Schur complements
   Uint1, Vint1 = generators(S1.A11); Uint1 = Uint1*S1.B12
   Uint2, Vint2 = generators(S2.A11); Uint2 = Uint2*S2.B12
