@@ -1,3 +1,7 @@
 # HierarchicalSolvers.jl
 
-Library implementing sparse direct solvers based on nested dissection reorderings. Further optimizations are implmented, including compression of Schur complements via hierarchically structured low-rank (HSS) matrices and efficient storage of Gauss transforms as low-rank matrices.
+Hierarchical solvers is an approximate sparse direct solver, entirely written in Julia. It can run in superlinear complexity as approximate solver employing lowrank and hierarchically structured low-rank (HSS) matrices to compress Gauss transforms and Schur complements.
+
+## Cite as
+
+*Bonev, Boris; Hesthaven, Jan S.* "A hierarchical preconditioner for wave problems in quasilinear complexity." Under Review. [https://infoscience.epfl.ch/record/279971/files/article.pdf](https://infoscience.epfl.ch/record/279971/files/article.pdf)
