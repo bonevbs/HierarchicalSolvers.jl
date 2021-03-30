@@ -16,8 +16,10 @@ HssMatrices.setopts(stepsize=50)
 include("../util/read_problem.jl")
 #A, b, nd = read_problem("./test/test.mat")
 #A, b, nd = read_problem("./test/poisson2d_p1_h64.mat"
-A, b, nd = read_problem("./test/poisson3d_p1_h8.mat")
-println("Read in $(size(A)) matrix.")
+A, b, nd = read_problem("./test/poisson2d_p1_h512.mat")
+println("Problem parameters:")
+println("   $(size(A)) matrix")
+println("   $(depth(nd))-level nested-dissection")
 
 # println("Computing factorization without compression...")
 Fa = factor(A, nd, swlevel = 0)
