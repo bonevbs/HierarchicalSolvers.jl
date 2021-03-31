@@ -2,11 +2,11 @@
 # Written by Boris Bonev, Feb. 2021
 
 # datastructure to hold the hiearchical factorization
-mutable struct FactorNode{T<:Number} <: Factorization{T}
-  D::Union{Matrix{T}, SparseMatrixCSC{T}, BlockMatrix{T}}
-  S::Union{Matrix{T}, HssMatrix{T}}
-  L::Union{Matrix{T}, LowRankMatrix{T}}
-  R::Union{Matrix{T}, LowRankMatrix{T}}
+mutable struct FactorNode{T<:Number, TD<:AbstractMatrix{T}, TS<:AbstractMatrix{T}, TL<:AbstractMatrix{T}, TR<:AbstractMatrix{T}} <: Factorization{T}
+  D::TD
+  S::TS
+  L::TL
+  R::TR
 
   # rename these to something more meaningful!!
   int::Vector{Int}
@@ -19,29 +19,23 @@ mutable struct FactorNode{T<:Number} <: Factorization{T}
   right::Union{FactorNode{T}, Nothing}
 
   # internal constructors with checks for dimensions
-  global function _FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
-    L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
-    int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T
-    new{T}(D, S, L, R, int, bnd, int_loc, bnd_loc, nothing, nothing)
+  global function _FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+     int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T
+    new{T, typeof(D), typeof(S), typeof(L), typeof(R)}(D, S, L, R, int, bnd, int_loc, bnd_loc, nothing, nothing)
   end
   # parent constructor, finds the local indices of the children indices automatically 
-  global function _FactorNode(D::Union{Matrix{T}, SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
-    L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
-    int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int},
-    left::FactorNode{T}, right::FactorNode{T}) where T
+  global function _FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+      int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}, left::FactorNode{T}, right::FactorNode{T}) where T
     # maybe also implement a check to make sure that disjointedness is guaranteed
-    new{T}(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
+    new{T, typeof(D), typeof(S), typeof(L), typeof(R)}(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
   end
 end
 
 # outer constructors
-FactorNode(D::Union{Matrix{T},SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
-L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
-int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
-FactorNode(D::Union{Matrix{T},SparseMatrixCSC{T}, BlockMatrix{T}}, S::Union{Matrix{T}, HssMatrix{T}},
-L::Union{Matrix{T}, LowRankMatrix{T}}, R::Union{Matrix{T}, LowRankMatrix{T}},
-int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int},
-left::FactorNode{T}, right::FactorNode{T}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
+FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+  int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
+FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+  int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}, left::FactorNode{T}, right::FactorNode{T}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
 
 eltype(::FactorNode{T}) where T = T
 Base.show(io::IO, node::FactorNode) = print(io, "FactorNode{$(eltype(node))}")
@@ -83,7 +77,12 @@ end
 function _dsolve!(F::FactorNode, rhs::AbstractMatrix)
   if !isnothing(F.left) rhs = _dsolve!(F.left, rhs) end
   if !isnothing(F.right) rhs = _dsolve!(F.right, rhs) end
-  rhs[F.int,:] .= F.D\rhs[F.int,:]
+  #rhs[F.int,:] .= F.D\rhs[F.int,:]
+  if isa(F.D, BlockMatrix)
+    rhs[F.int,:] = blockldiv!(F.D, rhs[F.int,:])
+  else
+    rhs[F.int,:] .= F.D\rhs[F.int,:]
+  end
   return rhs
 end
 

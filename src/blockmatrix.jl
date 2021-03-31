@@ -94,16 +94,20 @@ end
 
 
 
-# #\(A::BlockMatrix, B::AbstractMatrix) = blockldiv!(similar(B), A, copy(B))
-# #/(A::AbstractMatrix, B::BlockMatrix) = blockrdiv!(similar(A), copy(A), B)
+#\(A::BlockMatrix, B::AbstractMatrix) = blockldiv!(similar(B), A, copy(B))
+#/(A::AbstractMatrix, B::BlockMatrix) = blockrdiv!(similar(A), copy(A), B)
+
+# TODO: change blockldiv to AbstractMatrix??
 
 # specialized routines for computing A \ B overwriting B
-blockldiv!(A::BlockMatrix, B::Matrix; atol::Float64, rtol::Float64) = B = blockldiv!(similar(B), A, B; atol, rtol)
-function blockldiv!(Y::Matrix, A::BlockMatrix, B::Matrix; atol::Float64, rtol::Float64)
+blockldiv!(A::BlockMatrix, B::Matrix, opts::SolverOptions=SolverOptions(); args...) = B = blockldiv!(similar(B), A, B, opts)
+function blockldiv!(Y::Matrix, A::BlockMatrix, B::Matrix, opts::SolverOptions=SolverOptions();  args...)
+  opts = copy(opts; args...)
+  chkopts!(opts)
   m1,n1 = size(A.A11)
   if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
     S22 = A.A22 - A.A21*(A.A11\A.A12)
-    S22 = recompress!(S22, atol=atol, rtol=rtol)
+    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
   elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
     error("Not implemented yet")
   else
@@ -116,12 +120,14 @@ function blockldiv!(Y::Matrix, A::BlockMatrix, B::Matrix; atol::Float64, rtol::F
   return Y
 end
 # compute B / A overwriting B
-blockrdiv!(A::Matrix, B::BlockMatrix; atol::Float64, rtol::Float64) = A = blockrdiv!(similar(A), A, B; atol, rtol)
-function blockrdiv!(Y::Matrix, A::Matrix, B::BlockMatrix; atol::Float64, rtol::Float64)
+blockrdiv!(A::Matrix, B::BlockMatrix, opts::SolverOptions=SolverOptions(); args...) = A = blockrdiv!(similar(A), A, B, opts)
+function blockrdiv!(Y::Matrix, A::Matrix, B::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
+  opts = copy(opts; args...)
+  chkopts!(opts)
   m1,n1 = size(B.A11)
   if ishss(B.A11) && ishss(B.A12) && ishss(B.A21) && ishss(B.A22)
     S22 = B.A22 - B.A21*(B.A11\B.A12)
-    S22 = recompress!(S22, atol=atol, rtol=rtol)
+    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
   elseif ishss(B.A11) || ishss(B.A22)
     error("Not implemented yet")
   else
@@ -135,12 +141,15 @@ function blockrdiv!(Y::Matrix, A::Matrix, B::BlockMatrix; atol::Float64, rtol::F
   return Y
 end
 
-function blockldiv(A::BlockMatrix, B::BlockMatrix)
-  size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
+function blockldiv(A::BlockMatrix, B::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
+  opts = copy(opts; args...)
+  chkopts!(opts)
+  #size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
   #size(A.A11,1) == size(B,1) || throw(DimensionMismatch("Block structure of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
   # Form the Schur complement
   if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
     S22 = A.A22 - A.A21*(A.A11\A.A12)
+    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
   elseif ishss(A.A11) || ishss(A.A22)
     error("Not implemented yet")
   else
@@ -160,11 +169,15 @@ function blockldiv(A::BlockMatrix, B::BlockMatrix)
   return BlockMatrix(B11, B12, B21, B22)
 end
 
-function blockrdiv(B::BlockMatrix, A::BlockMatrix)
-  # safety is off on this one
+function blockrdiv(B::BlockMatrix, A::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
+  opts = copy(opts; args...)
+  chkopts!(opts)
+  # checks dims
+  #size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
   # compute the Schur complement first
   if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
     S22 = A.A22 - A.A21*(A.A11\A.A12)
+    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
   elseif typeof(A.A11) <: HssMatrix && typeof(A.A2) <: HssMatrix
     error("Not implemented yet")
   else

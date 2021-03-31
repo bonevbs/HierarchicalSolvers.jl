@@ -107,7 +107,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   R = blockldiv(Aii, Aib)
   S = Abb - Abi*R
   perm = [nd_loc.int; nd_loc.bnd];
-  return FactorNode(Matrix(Aii), S[perm,perm], Matrix(L), Matrix(R), nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
+  return FactorNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
 end
 
 # factor node matrix free and compress it
@@ -140,8 +140,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   Sidx = (i,j) -> Abb[perm[i], perm[j]] - U.U[perm[i], :]*U.V[perm[j],:]'
   Sop = LinearMap{T}(size(Abb)..., Smul, Smulc, Sidx, nothing)
   hssS = randcompress_adaptive(Sop, cl, cl; kest=kest, atol=atol, rtol=rtol, verbose=verbose)
-  #hssS = recompress!(hssS)
-  return FactorNode(Matrix(Aii), hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
+  return FactorNode(Aii, hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
 end
 
 # general routine for assembling the new block matrices
