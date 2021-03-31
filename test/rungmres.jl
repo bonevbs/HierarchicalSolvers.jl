@@ -25,14 +25,14 @@ println("   $(size(A)) matrix")
 println("   $(depth(nd))-level nested-dissection")
 
 println("Computing factorization without compression...")
-Fa = factor(A, nd, swlevel = 0)
-@time Fa = factor(A, nd, swlevel = 0)
+Fa = factor(A, nd; swlevel = 0)
+@time Fa = factor(A, nd; swlevel = 0)
 xa = ldiv!(Fa, copy(b));
 println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
 
 println("Computing factorization with compression...")
-Fc = factor(A, nd, swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
-@time Fc = factor(A, nd, swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+@time factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
 println("Computing approximate solution...")
 xc = ldiv!(Fc, copy(b));
 @time xc = ldiv!(Fc, copy(b));

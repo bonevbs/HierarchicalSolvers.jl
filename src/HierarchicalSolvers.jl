@@ -39,7 +39,7 @@ module HierarchicalSolvers
   end
   
   # set default values
-  function SolverOptions(::Type{T}; args...) where T
+  function SolverOptions(; args...)
     opts = SolverOptions(
       5,      # switching level at which to start compression
       1000,   # minimum size for compression ## not implemented yet
@@ -54,9 +54,9 @@ module HierarchicalSolvers
     for (key, value) in args
       setfield!(opts, key, value)
     end
-    opts
+    return opts
   end
-  SolverOptions(; args...) = SolverOptions(Float64; args...)
+  #SolverOptions(; args...) = SolverOptions(Float64; args...)
   
   function copy(opts::SolverOptions; args...)
     opts_ = SolverOptions()

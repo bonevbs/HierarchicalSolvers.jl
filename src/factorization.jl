@@ -2,7 +2,7 @@
 # Written by Boris Bonev, Feb. 2021
 
 ## Factorization routine
-function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions=SolverOptions(T);  args...) where T
+function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions=SolverOptions();  args...) where T
   opts = copy(opts; args...)
   chkopts!(opts)
   opts.swlevel < 0 ? swlevel = max(depth(nd) + opts.swlevel, 0) : swlevel = opts.swlevel
@@ -147,7 +147,7 @@ end
 function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::AbstractMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; args...) where T
   ni1 = length(int1); nb1 = length(bnd1)
   ni2 = length(int2); nb2 = length(bnd2)
-  Aii = BlockMatrix(S1[1:ni1, 1:ni1], A[int1, int2], A[int2, int1], S2[1:ni2, 1:ni2])
+  Aii = BlockMatrix(S1[1:ni1, 1:ni1], A[int1, int2], A[int2, int1], S2[1:ni2, 1:ni2]) #introduce views maybe
   Aib = BlockMatrix(S1[1:ni1, ni1+1:ni1+nb1], A[int1, bnd2], A[int2, bnd1], S2[1:ni2, ni2+1:ni2+nb2])
   Abi = BlockMatrix(S1[ni1+1:ni1+nb1, 1:ni1], A[bnd1, int2], A[bnd2, int1], S2[ni2+1:ni2+nb2, 1:ni2])
   Abb = BlockMatrix(S1[ni1+1:ni1+nb1, ni1+1:ni1+nb1], A[bnd1, bnd2], A[bnd2, bnd1], S2[ni2+1:ni2+nb2, ni2+1:ni2+nb2])
