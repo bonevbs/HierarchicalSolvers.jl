@@ -92,7 +92,7 @@ function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::Nested
   perm = [int_loc; bnd_loc]
   S[invperm(perm), invperm(perm)] = A[bnd, bnd] .- A[bnd, int] * R
   cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
-  hssS = compress(S, cl, cl, atol=atol, rtol=rtol)
+  hssS = compress(S, cl, cl; atol=atol, rtol=rtol)
   return FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
 end
 
@@ -103,6 +103,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
 
   Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
 
+  Aii = blockfactor(Aii; atol, rtol)
   L = blockrdiv(Abi, Aii)
   R = blockldiv(Aii, Aib)
   S = Abb - Abi*R
@@ -117,12 +118,14 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
 
   Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
 
+  # block-factorization
+  Aii = blockfactor(Aii; atol, rtol)
   # build operators
-  Lmul = (y, _, x) ->  y = Abi*blockldiv!(Aii, x; atol, rtol)
-  Lmulc = (y, _, x) ->  y = blockrdiv!((x'*Abi), Aii; atol, rtol)'
+  Lmul = (y, _, x) ->  y = Abi*blockldiv!(Aii, x)
+  Lmulc = (y, _, x) ->  y = blockrdiv!((x'*Abi), Aii)'
   Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing);
-  Rmul = (y, _, x) ->  y = blockldiv!(Aii, (Aib*x); atol, rtol)
-  Rmulc = (y, _, x) ->  y = (blockrdiv!(x', Aii; atol, rtol)*Aib)'
+  Rmul = (y, _, x) ->  y = blockldiv!(Aii, (Aib*x))
+  Rmulc = (y, _, x) ->  y = (blockrdiv!(x', Aii)*Aib)'
   Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing);
   # use randomized compression to get the low-rank representation
   # TODO: replace this with c_tol

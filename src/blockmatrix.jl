@@ -92,106 +92,92 @@ end
 *(A::BlockMatrix, B::LowRankMatrix) = LowRankMatrix(A*B.U,B.V)
 *(A::LowRankMatrix, B::BlockMatrix) = LowRankMatrix(A.U,(A.V'*B)')
 
+## Special routines using the BlockFactorization
 
+# 2x2 block factorization stores factorization and inverse
+struct BlockFactorization{T, TB <: BlockMatrix{T}} <: Factorization{T}
+  B::TB
+end
 
-#\(A::BlockMatrix, B::AbstractMatrix) = blockldiv!(similar(B), A, copy(B))
-#/(A::AbstractMatrix, B::BlockMatrix) = blockrdiv!(similar(A), copy(A), B)
+# basic overrides
+size(F::BlockFactorization) = size(F.B)
+size(F::BlockFactorization, dim::Int) = size(F.B, dim)
 
-# TODO: change blockldiv to AbstractMatrix??
-
-# specialized routines for computing A \ B overwriting B
-blockldiv!(A::BlockMatrix, B::Matrix, opts::SolverOptions=SolverOptions(); args...) = B = blockldiv!(similar(B), A, B, opts)
-function blockldiv!(Y::Matrix, A::BlockMatrix, B::Matrix, opts::SolverOptions=SolverOptions();  args...)
+# factor block matrix
+function blockfactor(A::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
+  # parse and check inputs
   opts = copy(opts; args...)
   chkopts!(opts)
-  m1,n1 = size(A.A11)
+  size(A.A11,1) == size(A.A11,2) || throw(DimensionMismatch("First block of A is not square."))
+  size(A.A22,1) == size(A.A22,2) || throw(DimensionMismatch("Second block of A is not square."))
+
+  # probably should include routine that computes the factorization of A11 so it doesn't have to be repeated
+  # could be done by extending the blockmatrix class to hold factorizations
+  # compute the Schur complement
   if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
     S22 = A.A22 - A.A21*(A.A11\A.A12)
-    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
+    S22 = recompress!(S22; atol=opts.atol, rtol=opts.rtol)
   elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
     error("Not implemented yet")
   else
     S22 = A.A22 .- A.A21*(A.A11\convert(Matrix, A.A12))
   end
+
+  return BlockFactorization(BlockMatrix(A.A11, A.A12, A.A21, S22))
+end
+
+# routines for applying the factorization
+blockldiv!(F::BlockFactorization, B::AbstractMatrix) = B = blockldiv!(similar(B), F, B)
+function blockldiv!(Y::T, F::BlockFactorization, B::T) where {T <: AbstractMatrix}
+  A = F.B
+  m1,n1 = size(A.A11)
+  # application of the inverse
   Y[1:n1,:] = A.A11\B[1:n1,:]
   Y[n1+1:end,:] = B[n1+1:end,:] - A.A21*Y[1:n1,:]
-  Y[n1+1:end,:] = S22\Y[n1+1:end,:]
-  Y[1:n1,:] = Y[1:n1,:] .- A.A11\(A.A12*Y[n1+1:end,:])
+  Y[n1+1:end,:] = A.A22\Y[n1+1:end,:]
+  Y[1:n1,:] = Y[1:n1,:] - A.A11\(A.A12*Y[n1+1:end,:])
   return Y
 end
-# compute B / A overwriting B
-blockrdiv!(A::Matrix, B::BlockMatrix, opts::SolverOptions=SolverOptions(); args...) = A = blockrdiv!(similar(A), A, B, opts)
-function blockrdiv!(Y::Matrix, A::Matrix, B::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
-  opts = copy(opts; args...)
-  chkopts!(opts)
+
+blockrdiv!(A::AbstractMatrix, F::BlockFactorization) = A = blockrdiv!(similar(A), A, F)
+function blockrdiv!(Y::T, A::T, F::BlockFactorization) where {T <: AbstractMatrix}
+  B = F.B
   m1,n1 = size(B.A11)
-  if ishss(B.A11) && ishss(B.A12) && ishss(B.A21) && ishss(B.A22)
-    S22 = B.A22 - B.A21*(B.A11\B.A12)
-    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
-  elseif ishss(B.A11) || ishss(B.A22)
-    error("Not implemented yet")
-  else
-    S22 = B.A22 .- B.A21*(B.A11\convert(Matrix, B.A12))
-  end
-  #if ishss(B.A11); @infiltrate; end
+  # application of the inverse
   Y[:,1:m1] = A[:,1:m1]/B.A11
   Y[:,m1+1:end] = A[:,m1+1:end] - Y[:,1:m1]*B.A12
-  Y[:,m1+1:end] = Y[:,m1+1:end]/S22
+  Y[:,m1+1:end] = Y[:,m1+1:end]/B.A22
   Y[:,1:m1] = Y[:,1:m1] - (Y[:,m1+1:end]*B.A21)/B.A11
   return Y
 end
 
-function blockldiv(A::BlockMatrix, B::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
-  opts = copy(opts; args...)
-  chkopts!(opts)
-  #size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
-  #size(A.A11,1) == size(B,1) || throw(DimensionMismatch("Block structure of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
-  # Form the Schur complement
-  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
-    S22 = A.A22 - A.A21*(A.A11\A.A12)
-    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
-  elseif ishss(A.A11) || ishss(A.A22)
-    error("Not implemented yet")
-  else
-    S22 = A.A22 - A.A21*(A.A11\convert(Matrix, A.A12))
-  end
-  # TODO: this can be optimized by storing factorizations
-  # perform on the first column
+# routines involving two blockmatrices
+function blockldiv(F::BlockFactorization, B::BlockMatrix)
+  A = F.B
+  # first column
   B11 = A.A11\B.A11
   B21 = B.A21 - A.A21*B11
-  B21 = S22\B21
+  B21 = A.A22\B21
   B11 = B11 - A.A11\(A.A12*B21)
   # repeat for the second column
   B12 = A.A11\convert(Matrix, B.A12)
   B22 = B.A22 - A.A21*B12;
-  B22 = S22\B22
+  B22 = A.A22\B22
   B12 = B12 - A.A11\(A.A12*B22); 
   return BlockMatrix(B11, B12, B21, B22)
 end
 
-function blockrdiv(B::BlockMatrix, A::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
-  opts = copy(opts; args...)
-  chkopts!(opts)
-  # checks dims
-  #size(A,1) == size(B,1) || throw(DimensionMismatch("First dimension of A doesn't match first dimension of B. Expected $(size(B,1)), but got $(size(A,1))"))
-  # compute the Schur complement first
-  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
-    S22 = A.A22 - A.A21*(A.A11\A.A12)
-    S22 = recompress!(S22, atol=opts.atol, rtol=opts.rtol)
-  elseif typeof(A.A11) <: HssMatrix && typeof(A.A2) <: HssMatrix
-    error("Not implemented yet")
-  else
-    S22 = A.A22 - A.A21*(A.A11\convert(Matrix, A.A12))
-  end
+function blockrdiv(B::BlockMatrix, F::BlockFactorization)
+  A = F.B
   # perform solve step on first block row
   B11 = B.A11/A.A11
   B12 = B.A12 - B11*A.A12
-  B12 = B12/S22
+  B12 = B12/A.A22
   B11 = B11 - (B12*A.A21)/A.A11
   # repeat for second block row
   B21 = convert(Matrix, B.A21)/A.A11
   B22 = B.A22 - B21*A.A12
-  B22 = B22/S22; 
+  B22 = B22/A.A22 
   B21 = B21 - (B22*A.A21)/A.A11
   return BlockMatrix(B11, B12, B21, B22)
 end

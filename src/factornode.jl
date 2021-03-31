@@ -1,12 +1,14 @@
 ### Definitions of the solver/preconditioner datastructure
 # Written by Boris Bonev, Feb. 2021
 
+const MatFact{T} = Union{AbstractMatrix{T}, Factorization{T}}
+
 # datastructure to hold the hiearchical factorization
-mutable struct FactorNode{T<:Number, TD<:AbstractMatrix{T}, TS<:AbstractMatrix{T}, TL<:AbstractMatrix{T}, TR<:AbstractMatrix{T}} <: Factorization{T}
-  D::TD
-  S::TS
-  L::TL
-  R::TR
+mutable struct FactorNode{T<:Number, TD<:MatFact, TS<:AbstractMatrix{T}, TL<:AbstractMatrix{T}, TR<:AbstractMatrix{T}} <: Factorization{T}
+  D::TD # diagonal block
+  S::TS # Schur complement
+  L::TL # left Gauss transform
+  R::TR # right Gauss transform
 
   # rename these to something more meaningful!!
   int::Vector{Int}
@@ -15,16 +17,17 @@ mutable struct FactorNode{T<:Number, TD<:AbstractMatrix{T}, TS<:AbstractMatrix{T
   int_loc::Vector{Int}
   bnd_loc::Vector{Int}
 
+  # bindings to the children nodes
   left::Union{FactorNode{T}, Nothing}
   right::Union{FactorNode{T}, Nothing}
 
   # internal constructors with checks for dimensions
-  global function _FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+  global function _FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
      int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T
     new{T, typeof(D), typeof(S), typeof(L), typeof(R)}(D, S, L, R, int, bnd, int_loc, bnd_loc, nothing, nothing)
   end
   # parent constructor, finds the local indices of the children indices automatically 
-  global function _FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+  global function _FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
       int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}, left::FactorNode{T}, right::FactorNode{T}) where T
     # maybe also implement a check to make sure that disjointedness is guaranteed
     new{T, typeof(D), typeof(S), typeof(L), typeof(R)}(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
@@ -32,9 +35,9 @@ mutable struct FactorNode{T<:Number, TD<:AbstractMatrix{T}, TS<:AbstractMatrix{T
 end
 
 # outer constructors
-FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
   int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
-FactorNode(D::AbstractMatrix{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
+FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
   int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}, left::FactorNode{T}, right::FactorNode{T}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
 
 eltype(::FactorNode{T}) where T = T
@@ -65,11 +68,11 @@ end
 function _lsolve!(F::FactorNode, rhs::AbstractMatrix)
   if !isnothing(F.left) rhs = _lsolve!(F.left, rhs) end
   if !isnothing(F.right) rhs = _lsolve!(F.right, rhs) end
-  rhs[F.bnd,:] .= rhs[F.bnd,:] .- F.L*rhs[F.int,:]
+  rhs[F.bnd,:] = rhs[F.bnd,:] - F.L*rhs[F.int,:]
   return rhs
 end
 function _rsolve!(F::FactorNode, rhs::AbstractMatrix)
-  rhs[F.int,:] .= rhs[F.int,:] .- F.R*rhs[F.bnd,:]
+  rhs[F.int,:] = rhs[F.int,:] - F.R*rhs[F.bnd,:]
   if !isnothing(F.left) rhs = _rsolve!(F.left, rhs) end
   if !isnothing(F.right) rhs = _rsolve!(F.right, rhs) end
   return rhs
@@ -78,10 +81,10 @@ function _dsolve!(F::FactorNode, rhs::AbstractMatrix)
   if !isnothing(F.left) rhs = _dsolve!(F.left, rhs) end
   if !isnothing(F.right) rhs = _dsolve!(F.right, rhs) end
   #rhs[F.int,:] .= F.D\rhs[F.int,:]
-  if isa(F.D, BlockMatrix)
+  if isa(F.D, BlockFactorization)
     rhs[F.int,:] = blockldiv!(F.D, rhs[F.int,:])
   else
-    rhs[F.int,:] .= F.D\rhs[F.int,:]
+    rhs[F.int,:] = F.D\rhs[F.int,:]
   end
   return rhs
 end

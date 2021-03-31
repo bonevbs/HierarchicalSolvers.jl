@@ -32,7 +32,7 @@ println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
 
 println("Computing factorization with compression...")
 Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
-@time factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+@profview Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
 println("Computing approximate solution...")
 xc = ldiv!(Fc, copy(b));
 @time xc = ldiv!(Fc, copy(b));
