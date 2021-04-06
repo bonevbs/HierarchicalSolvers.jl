@@ -10,6 +10,9 @@ module HierarchicalSolvers
   using SparseArrays
   using LowRankApprox
   using DataStructures
+  using TimerOutputs
+
+  const to = TimerOutput()
 
   import Base: getproperty, setproperty!, size, eltype, getindex, *, /, \, copy, adjoint, transpose
   import LinearAlgebra: ldiv!, rdiv!, mul!

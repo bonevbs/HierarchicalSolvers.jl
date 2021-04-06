@@ -10,13 +10,19 @@ include("../src/HierarchicalSolvers.jl")
 using .HierarchicalSolvers
 using HssMatrices
 
+#using Profile
+#using Traceur
+#using ProfileView
+#using Cthulhu
+using TimerOutputs
+
 HssMatrices.setopts(leafsize=350)
 HssMatrices.setopts(stepsize=50)
 
 include("../util/read_problem.jl")
 #A, b, nd = read_problem("./test/test.mat")
-#A, b, nd = read_problem("./test/poisson2d_p1_h64.mat"
-A, b, nd = read_problem("./test/poisson2d_p1_h128.mat")
+#A, b, nd = read_problem("./test/poisson2d_p1_h64.mat")
+A, b, nd = read_problem("./test/poisson2d_p1_h256.mat")
 
 bsz = 60
 
@@ -26,13 +32,21 @@ println("   $(depth(nd))-level nested-dissection")
 
 println("Computing factorization without compression...")
 Fa = factor(A, nd; swlevel = 0)
-@time Fa = factor(A, nd; swlevel = 0)
+show(HierarchicalSolvers.to)
+println()
+@time factor(A, nd; swlevel = 0)
+#@time Fa = factor(A, nd; swlevel = 0)
 xa = ldiv!(Fa, copy(b));
 println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
 
+reset_timer!(HierarchicalSolvers.to)
 println("Computing factorization with compression...")
 Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
-@profview Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+show(HierarchicalSolvers.to)
+println()
+@time factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+#@trace( Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false), maxdepth=2)
+#@profview Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
 println("Computing approximate solution...")
 xc = ldiv!(Fc, copy(b));
 @time xc = ldiv!(Fc, copy(b));

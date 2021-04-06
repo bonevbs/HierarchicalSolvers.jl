@@ -9,12 +9,12 @@ struct BlockMatrix{T, T11 <: AbstractMatrix{T}, T12 <: AbstractMatrix{T}, T21 <:
   A22::T22
 
   # inner constructor checks for consistency among dimensions
-  function BlockMatrix(A11::AbstractMatrix{T}, A12::AbstractMatrix{T}, A21::AbstractMatrix{T}, A22::AbstractMatrix{T}) where T
+  function BlockMatrix(A11, A12, A21, A22) where T
     size(A11, 1) == size(A12, 1) || throw(DimensionMismatch("first dimension of A11 and A12 do not match. Expected $(size(A11, 1)), got $(size(A12, 1))"))
     size(A11, 2) == size(A21, 2) || throw(DimensionMismatch("second dimension of A11 and A12 do not match. Expected $(size(A11, 2)), got $(size(A21, 2))"))
     size(A22, 1) == size(A21, 1) || throw(DimensionMismatch("first dimension of A22 and A21 do not match. Expected $(size(A22, 1)), got $(size(A21, 1))"))
     size(A22, 2) == size(A12, 2) || throw(DimensionMismatch("second dimension of A22 and A12 do not match. Expected $(size(A22, 2)), got $(size(A12, 2))"))
-    new{T, typeof(A11), typeof(A12), typeof(A21), typeof(A22)}(A11, A12, A21, A22)
+    new{eltype(A11), typeof(A11), typeof(A12), typeof(A21), typeof(A22)}(A11, A12, A21, A22)
   end
 end
 
@@ -76,17 +76,17 @@ copy(B::BlockMatrix) = BlockMatrix(copy(B.A11), copy(B.A12), copy(B.A21), copy(B
 # general fall-back routine
 function *(A::BlockMatrix, B::AbstractMatrix)
   m1, n1 = size(A.A11)
-  [A.A11*B[1:n1,:] .+ A.A12*B[n1+1:end,:]; A.A21*B[1:n1,:] .+ A.A22*B[n1+1:end,:]]
+  return [A.A11*B[1:n1,:] + A.A12*B[n1+1:end,:]; A.A21*B[1:n1,:] + A.A22*B[n1+1:end,:]]
 end
 function *(A::AbstractMatrix, B::BlockMatrix)
   m1, n1 = size(B.A11)
-  [A[:,1:m1]*B.A11 + A[:,m1+1:end]*B.A21 A[:,1:m1]*B.A12 + A[:,m1+1:end]*B.A22]
+  return [A[:,1:m1]*B.A11 + A[:,m1+1:end]*B.A21 A[:,1:m1]*B.A12 + A[:,m1+1:end]*B.A22]
 end
 # specializations
 function *(A::BlockMatrix, B::BlockMatrix)
   size(A,2) == size(B,1) ||  throw(DimensionMismatch("First dimension of B does not match second dimension of A. Expected $(size(A, 2)), got $(size(B, 1))"))
   size(A.A11,2) == size(B.A11,1) ||  throw(DimensionMismatch("Block rows of B do not match block columns of A. Expected $(size(A.A11, 2)), got $(size(B.A11, 1))"))
-  BlockMatrix(A.A11*B.A11 + A.A12*B.A21, A.A11*B.A12 + A.A12*B.A22, A.A21*B.A11 + A.A22*B.A21, A.A21*B.A12 + A.A22*B.A22)
+  return BlockMatrix(A.A11*B.A11 + A.A12*B.A21, A.A11*B.A12 + A.A12*B.A22, A.A21*B.A11 + A.A22*B.A21, A.A21*B.A12 + A.A22*B.A22)
 end
 # specialize to make sure block matrices play nice with low-rank matrices
 *(A::BlockMatrix, B::LowRankMatrix) = LowRankMatrix(A*B.U,B.V)
@@ -95,36 +95,34 @@ end
 ## Special routines using the BlockFactorization
 
 # 2x2 block factorization stores factorization and inverse
-struct BlockFactorization{T, TB <: BlockMatrix{T}} <: Factorization{T}
-  B::TB
+struct BlockFactorization{T, T11 <: AbstractMatrix{T}, T12 <: AbstractMatrix{T}, T21 <: AbstractMatrix{T}, T22 <: AbstractMatrix{T}} <: Factorization{T}
+  B::BlockMatrix{T, T11, T12, T21, T22}
 end
 
 # basic overrides
 size(F::BlockFactorization) = size(F.B)
 size(F::BlockFactorization, dim::Int) = size(F.B, dim)
 
-# factor block matrix
+# ompute block factorization
 function blockfactor(A::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
-  # parse and check inputs
+  size(A.A11,1) == size(A.A11,2) || throw(DimensionMismatch("First block of A is not square."))
+  size(A.A22,1) == size(A.A22,2) || throw(DimensionMismatch("Second block of A is not square."))
+  S22 = A.A22 .- A.A21*(A.A11\convert(Matrix, A.A12))
+  return BlockFactorization(BlockMatrix(A.A11, A.A12, A.A21, S22))
+end
+
+function blockfactor(A::BlockMatrix{T, HssMatrix{T}, HssMatrix{T}, HssMatrix{T}, HssMatrix{T}}, opts::SolverOptions=SolverOptions();  args...) where T
   opts = copy(opts; args...)
   chkopts!(opts)
   size(A.A11,1) == size(A.A11,2) || throw(DimensionMismatch("First block of A is not square."))
   size(A.A22,1) == size(A.A22,2) || throw(DimensionMismatch("Second block of A is not square."))
 
-  # probably should include routine that computes the factorization of A11 so it doesn't have to be repeated
-  # could be done by extending the blockmatrix class to hold factorizations
-  # compute the Schur complement
-  if ishss(A.A11) && ishss(A.A12) && ishss(A.A21) && ishss(A.A22)
-    S22 = A.A22 - A.A21*(A.A11\A.A12)
-    S22 = recompress!(S22; atol=opts.atol, rtol=opts.rtol)
-  elseif typeof(A.A11) <: HssMatrix && typeof(A.A22) <: HssMatrix
-    error("Not implemented yet")
-  else
-    S22 = A.A22 .- A.A21*(A.A11\convert(Matrix, A.A12))
-  end
-
+  println("got called!")
+  S22 = A.A22 - A.A21*(A.A11\A.A12)
+  S22 = recompress!(S22; atol=opts.atol, rtol=opts.rtol)
   return BlockFactorization(BlockMatrix(A.A11, A.A12, A.A21, S22))
 end
+
 
 # routines for applying the factorization
 blockldiv!(F::BlockFactorization, B::AbstractMatrix) = B = blockldiv!(similar(B), F, B)
@@ -132,10 +130,10 @@ function blockldiv!(Y::T, F::BlockFactorization, B::T) where {T <: AbstractMatri
   A = F.B
   m1,n1 = size(A.A11)
   # application of the inverse
-  Y[1:n1,:] = A.A11\B[1:n1,:]
-  Y[n1+1:end,:] = B[n1+1:end,:] - A.A21*Y[1:n1,:]
-  Y[n1+1:end,:] = A.A22\Y[n1+1:end,:]
-  Y[1:n1,:] = Y[1:n1,:] - A.A11\(A.A12*Y[n1+1:end,:])
+  Y[1:n1,:] .= A.A11\B[1:n1,:]
+  Y[n1+1:end,:] .= B[n1+1:end,:] - A.A21*Y[1:n1,:]
+  Y[n1+1:end,:] .= A.A22\Y[n1+1:end,:]
+  Y[1:n1,:] .= Y[1:n1,:] .- A.A11\(A.A12*Y[n1+1:end,:])
   return Y
 end
 
@@ -144,10 +142,10 @@ function blockrdiv!(Y::T, A::T, F::BlockFactorization) where {T <: AbstractMatri
   B = F.B
   m1,n1 = size(B.A11)
   # application of the inverse
-  Y[:,1:m1] = A[:,1:m1]/B.A11
-  Y[:,m1+1:end] = A[:,m1+1:end] - Y[:,1:m1]*B.A12
-  Y[:,m1+1:end] = Y[:,m1+1:end]/B.A22
-  Y[:,1:m1] = Y[:,1:m1] - (Y[:,m1+1:end]*B.A21)/B.A11
+  Y[:,1:m1] .= A[:,1:m1]/B.A11
+  Y[:,m1+1:end] .= A[:,m1+1:end] - Y[:,1:m1]*B.A12
+  Y[:,m1+1:end] .= Y[:,m1+1:end]/B.A22
+  Y[:,1:m1] .= Y[:,1:m1] .- (Y[:,m1+1:end]*B.A21)/B.A11
   return Y
 end
 
