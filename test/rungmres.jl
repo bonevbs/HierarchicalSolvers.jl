@@ -22,7 +22,7 @@ HssMatrices.setopts(stepsize=50)
 include("../util/read_problem.jl")
 #A, b, nd = read_problem("./test/test.mat")
 #A, b, nd = read_problem("./test/poisson2d_p1_h64.mat")
-A, b, nd = read_problem("./test/poisson2d_p1_h256.mat")
+A, b, nd = read_problem("./test/poisson2d_p1_h128.mat")
 
 bsz = 60
 
@@ -30,35 +30,36 @@ println("Problem parameters:")
 println("   $(size(A)) matrix")
 println("   $(depth(nd))-level nested-dissection")
 
+reset_timer!(HierarchicalSolvers.to)
 println("Computing factorization without compression...")
 Fa = factor(A, nd; swlevel = 0)
 show(HierarchicalSolvers.to)
 println()
-@time factor(A, nd; swlevel = 0)
+#@time factor(A, nd; swlevel = 0)
 #@time Fa = factor(A, nd; swlevel = 0)
-xa = ldiv!(Fa, copy(b));
-println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
+#xa = ldiv!(Fa, copy(b));
+#println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
 
 reset_timer!(HierarchicalSolvers.to)
 println("Computing factorization with compression...")
 Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
 show(HierarchicalSolvers.to)
 println()
-@time factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+#@time factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
 #@trace( Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false), maxdepth=2)
 #@profview Fc = factor(A, nd; swlevel = -4, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
-println("Computing approximate solution...")
-xc = ldiv!(Fc, copy(b));
-@time xc = ldiv!(Fc, copy(b));
-println("rel. error with compression ", norm(A*xc-b)/norm(A\b))
+#println("Computing approximate solution...")
+#xc = ldiv!(Fc, copy(b));
+#@time xc = ldiv!(Fc, copy(b));
+#println("rel. error with compression ", norm(A*xc-b)/norm(A\b))
 
 # pind = postorder(nd)
 # spy(A[pind, pind])
 
 # compare with fill-in reduction
-x1, ch1 = gmres(A, b; Pr=Fa, reltol=1e-9, restart=30, log=true, maxiter=30)
-x2, ch2 = gmres(A, b; Pr=Fc, reltol=1e-9, restart=30, log=true, maxiter=30)
+#x1, ch1 = gmres(A, b; Pr=Fa, reltol=1e-9, restart=30, log=true, maxiter=30)
+#x2, ch2 = gmres(A, b; Pr=Fc, reltol=1e-9, restart=30, log=true, maxiter=30)
 
-plot(yaxis=:log)
-plot!(ch1[:resnorm], marker=true, label="direct solver")
-plot!(ch2[:resnorm], marker=true, label="hierarchical preconditioner")
+#plot(yaxis=:log)
+#plot!(ch1[:resnorm], marker=true, label="direct solver")
+#plot!(ch2[:resnorm], marker=true, label="hierarchical preconditioner")

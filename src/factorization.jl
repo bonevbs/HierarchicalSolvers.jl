@@ -6,50 +6,9 @@ function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions
   opts = copy(opts; args...)
   chkopts!(opts)
   opts.swlevel < 0 ? swlevel = max(depth(nd) + opts.swlevel, 0) : swlevel = opts.swlevel
-  nd_loc = symfact!(nd)
-  nd_loc.int = collect(1:length(nd.bnd))
-  nd_loc.bnd = Vector{Int}()
+  nd, nd_loc = symfact!(nd) # get the local indices
   F = _factor(A, nd, nd_loc, 1; swlevel, opts.atol, opts.rtol, opts.leafsize, opts.kest, opts.stepsize, opts.verbose)
   return F
-end
-
-## Symbolic factorization routine
-# returns a reordered nessted dissection tree as well as a nested dissection tree containing the local indices
-symfact!(nd::NestedDissection) = _symfact!(nd, 1)
-function _symfact!(nd::NestedDissection, level)
-  if isleaf(nd)
-    nd_loc = NDNode(Vector{Int}(), Vector{Int}())
-  else
-    if !isnothing(nd.left)
-      left_loc = _symfact!(nd.left, level+1)
-      # figure out where the children indices go in the parent
-      left_loc.int = findall(in(nd.int), nd.left.bnd)
-      left_loc.bnd = findall(in(nd.bnd), nd.left.bnd)
-      # reordered indices for the current node
-      intl = nd.left.bnd[left_loc.int];
-      bndl = nd.left.bnd[left_loc.bnd];
-    else
-      intl = Vector{Int}()
-      bndl = Vector{Int}()
-      left_loc = nothing
-    end
-    if !isnothing(nd.right)
-      right_loc = _symfact!(nd.right, level+1)
-      right_loc.int = findall(in(nd.int), nd.right.bnd)
-      right_loc.bnd = findall(in(nd.bnd), nd.right.bnd)
-      intr = nd.right.bnd[right_loc.int];
-      bndr = nd.right.bnd[right_loc.bnd];
-    else
-      intr = Vector{Int}()
-      bndr = Vector{Int}()
-      right_loc = nothing
-    end
-    # check that we really got all the degrees of freedom
-    nd.int = [intl; intr]
-    nd.bnd = [bndl; bndr]
-    nd_loc = NDNode(Vector{Int}(), Vector{Int}(), left_loc, right_loc)
-  end
-  return nd_loc
 end
 
 # recursive definition of the internal factorization routine
@@ -114,8 +73,8 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   end
   @timeit to "Schur complement" begin
     S = Abb - Abi*R
+    perm = [nd_loc.int; nd_loc.bnd];
   end
-  perm = [nd_loc.int; nd_loc.bnd];
   return FactorNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
 end
 
@@ -181,6 +140,7 @@ function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{
   Uint2, Vint2 = generators(S2.A11); Uint2 = Uint2*S2.B12
   Ubnd1, Vbnd1 = generators(S1.A22); Ubnd1 = Ubnd1*S1.B21
   Ubnd2, Vbnd2 = generators(S2.A22); Ubnd2 = Ubnd2*S2.B21
+
   # form the blocks
   Aii = BlockMatrix(S1.A11, hss(A[int1, int2], rcl1, ccl2; atol=atol, rtol=rtol), hss(A[int2, int1], rcl2, ccl1; atol=atol, rtol=rtol), S2.A11) # check hssranks of the offdiagonal guys
   Aib = BlockMatrix(LowRankMatrix(Uint1, Vbnd1), A[int1, bnd2], A[int2, bnd1], LowRankMatrix(Uint2, Vbnd2))

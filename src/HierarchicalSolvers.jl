@@ -21,13 +21,13 @@ module HierarchicalSolvers
   # HierarchicalSolvers.jl
   export SolverOptions
   # nesteddissection.jl
-  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior, getboundary
+  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior, getboundary, symfact!
   # lowrankextensions.jl
   # blockmatrix.jl
   # factornode.jl
   export FactorNode, solve, solve!
   # factorization.jl
-  export symfact!, factor
+  export factor
 
   mutable struct SolverOptions
     swlevel::Int
