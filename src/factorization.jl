@@ -28,34 +28,42 @@ end
 
 # factor leaf node without compressing it
 function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; args...) where T
-  @timeit to "leaf node" begin
+  @timeit to "factor diagonal block (leaves)" begin
     int = nd.int; bnd = nd.bnd;
     int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
     D = Matrix(view(A, int, int))
-    L = Matrix(view(A, bnd, int)) / D
-    R = D \ Matrix(view(A,int, bnd))
-    S = zeros(T, length(bnd), length(bnd))
-    perm = [int_loc; bnd_loc]
-    S[invperm(perm), invperm(perm)] .= A[bnd, bnd] .- A[bnd, int] * R
-    return FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
   end
+  @timeit to "Gauss transforms (leaves)" begin
+    Abi = Matrix(view(A, bnd, int))
+    L = Abi / D
+    R = D \ Matrix(view(A,int, bnd))
+  end
+  @timeit to "Schur complement (leaves)" begin
+    perm = [int_loc; bnd_loc]
+    S = Matrix(view(A,bnd, bnd)) .- Abi * R
+  end
+  return FactorNode(D, S[perm, perm], L, R, int, bnd, int_loc, bnd_loc)
 end
 
 # factor leaf node and compress to HSS form
 function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int) where T
-  @timeit to "leaf node" begin
+  @timeit to "factor diagonal block (leaves)" begin  
     int = nd.int; bnd = nd.bnd;
     int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
     D = Matrix(view(A, int, int))
+  end
+  @timeit to "Gauss transforms (leaves)" begin
+    Abi = Matrix(view(A, bnd, int))
     L = Matrix(view(A, bnd, int)) / D
     R = D \ Matrix(view(A,int, bnd))
-    S = zeros(T, length(bnd), length(bnd))
-    perm = [int_loc; bnd_loc]
-    S[invperm(perm), invperm(perm)] .= A[bnd, bnd] .- A[bnd, int] * R
-    cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
-    hssS = compress(S, cl, cl; atol=atol, rtol=rtol)
-    return FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
   end
+  @timeit to "Schur complement (leaves)" begin
+    perm = [int_loc; bnd_loc]
+    S = Matrix(view(A,bnd, bnd)) .- Abi * R
+    cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
+    hssS = compress(S[perm, perm], cl, cl; atol=atol, rtol=rtol)
+  end
+  return FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
 end
 
 # factor branch node without compressing it
