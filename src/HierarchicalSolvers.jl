@@ -21,7 +21,7 @@ module HierarchicalSolvers
   # HierarchicalSolvers.jl
   export SolverOptions
   # nesteddissection.jl
-  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior, getboundary, symfact!
+  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior, getboundary, symfact!, permuted!, contigious!
   # lowrankextensions.jl
   # blockmatrix.jl
   # factornode.jl
@@ -45,7 +45,7 @@ module HierarchicalSolvers
   function SolverOptions(; args...)
     opts = SolverOptions(
       5,      # switching level at which to start compression
-      1000,   # minimum size for compression ## not implemented yet
+      1,      # minimum size for compression # off by default
       1e-6,   # absolute compression tolerance
       1e-6,   # relative compression tolerance
       0.5,    # relative factor to tune low-rank compression tolerance w.r.t HSS compression tolerance

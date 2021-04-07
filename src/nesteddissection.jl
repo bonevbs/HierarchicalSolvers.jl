@@ -4,40 +4,37 @@
 # Written by Boris Bonev, Feb. 2021
 
 # Relies on the Binary tree structure defined in HssMatrices (Maybe change that?)
-const UnsortedNestedDissection = BinaryNode{Tuple{Vector{Int}, Vector{Int}}}
-const SortedNestedDissection = BinaryNode{Tuple{UnitRange{Int}, UnitRange{Int}}}
+const IndexSet = Union{Vector{Int}, UnitRange{Int}}
+const NestedDissection = BinaryNode{Tuple{T, T}} where T<:AbstractVector{Int}
 
-const NestedDissection = UnsortedNestedDissection
+_getproperty(x::NestedDissection, ::Val{s}) where {s} = getfield(x, s)
+_getproperty(x::NestedDissection, ::Val{:int}) = x.data[1]
+_getproperty(x::NestedDissection, ::Val{:bnd}) = x.data[2]
+getproperty(x::NestedDissection, s::Symbol) = _getproperty(x, Val{s}())
+_setproperty!(x::NestedDissection, ::Val{s}, a) where {s} = setfield!(x, s, a)
+_setproperty!(x::NestedDissection, ::Val{:int}, a) = (x.data =  (a, x.data[2]))
+_setproperty!(x::NestedDissection, ::Val{:bnd}, a) = (x.data =  (x.data[1], a))
+setproperty!(x::NestedDissection, s::Symbol, a) = _setproperty!(x, Val{s}(), a)
 
-for nd_type in (:UnsortedNestedDissection,:SortedNestedDissection)
-  @eval begin
-    _getproperty(x::$nd_type, ::Val{s}) where {s} = getfield(x, s)
-    _getproperty(x::$nd_type, ::Val{:int}) = x.data[1]
-    _getproperty(x::$nd_type, ::Val{:bnd}) = x.data[2]
-    getproperty(x::$nd_type, s::Symbol) = _getproperty(x, Val{s}())
-    _setproperty!(x::$nd_type, ::Val{s}, a) where {s} = setfield!(x, s, a)
-    _setproperty!(x::$nd_type, ::Val{:int}, a) = (x.data =  (a, x.data[2]))
-    _setproperty!(x::$nd_type, ::Val{:bnd}, a) = (x.data =  (x.data[1], a))
-    setproperty!(x::$nd_type, s::Symbol, a) = _setproperty!(x, Val{s}(), a)
-  end
-end
+NDNode(int::IndexSet, bnd::IndexSet) = BinaryNode((int, bnd))
+NDNode(int::IndexSet, bnd::IndexSet, left::NestedDissection, right::NestedDissection) = BinaryNode((int, bnd), left, right)
+NDNode(left::NestedDissection, right::NestedDissection) = BinaryNode((union(left.bnd, right.bnd), empty(left.bnd)), left, right)
 
-UNDNode(int::Vector{Int}, bnd::Vector{Int}) = BinaryNode((int, bnd))
-UNDNode(int::Vector{Int}, bnd::Vector{Int}, left::UnsortedNestedDissection, right::UnsortedNestedDissection) = BinaryNode((int, bnd), left, right)
-UNDNode(left::UnsortedNestedDissection, right::UnsortedNestedDissection) = BinaryNode((union(left.bnd, right.bnd), empty(left.bnd)), left, right)
+# not needed actually
+#unionrange(a::AbstractVector,b::AbstractVector) = union(a,b)
+#unionrange(a::UnitRange,b::UnitRange) = b[1] == a[end]+1 ? (a[1]:b[end]) : union(a,b) 
 
 ## Symbolic factorization routine
 # returns a reordered nessted dissection tree as well as a nested dissection tree containing the local indices
-function symfact!(nd::UnsortedNestedDissection)
-  _symfact!(nd, 1)
-  nd_loc = symfact!(nd)
+function symfact!(nd::NestedDissection)
+  nd_loc = _symfact!(nd, 1)
   nd_loc.int = collect(1:length(nd.bnd))
   nd_loc.bnd = Vector{Int}()
   return nd, nd_loc
 end
-function _symfact!(nd::UnsortedNestedDissection, level)
+function _symfact!(nd::NestedDissection, level)
   if isleaf(nd)
-    nd_loc = UNDNode(Vector{Int}(), Vector{Int}())
+    nd_loc = NDNode(Vector{Int}(), Vector{Int}())
   else
     if !isnothing(nd.left)
       left_loc = _symfact!(nd.left, level+1)
@@ -66,16 +63,14 @@ function _symfact!(nd::UnsortedNestedDissection, level)
     # check that we really got all the degrees of freedom
     nd.int = [intl; intr]
     nd.bnd = [bndl; bndr]
-    nd_loc = UNDNode(Vector{Int}(), Vector{Int}(), left_loc, right_loc)
+    nd_loc = NDNode(Vector{Int}(), Vector{Int}(), left_loc, right_loc)
   end
   return nd_loc
 end
 
-
-
 ## Other convenience functions
 # get all indices in post-order
-function postorder(nd::UnsortedNestedDissection)
+function postorder(nd::NestedDissection)
   ind = Vector{Int}()
   for x in PostOrderDFS(nd)
     ind = [ind; x.int]
@@ -83,14 +78,32 @@ function postorder(nd::UnsortedNestedDissection)
   ind = [ind; nd.bnd]
 end
 
+# permute index sets
+function permuted!(nd::NestedDissection, perm::Vector{Int})
+  if !isnothing(nd.left) nd.left = permuted!(nd.left, perm) end
+  if !isnothing(nd.right) nd.right = permuted!(nd.right, perm) end
+  nd.int = perm[nd.int]
+  nd.bnd = perm[nd.bnd]
+  return nd
+end
+
+# optimizes index sets into unit-ranges for faster access
+function contigious!(nd::NestedDissection)
+  if !isnothing(nd.left) nd.left = contigious!(nd.left) end
+  if !isnothing(nd.right) nd.right = contigious!(nd.right) end
+  if nd.int == nd.int[1]:nd.int[end]; nd.int = nd.int[1]:nd.int[end]; end
+  if nd.bnd == nd.bnd[1]:nd.bnd[end]; nd.bnd = nd.bnd[1]:nd.bnd[end]; end
+  return nd
+end
+
 # recursively compute the interior
-getinterior(nd::UnsortedNestedDissection) = _getinterior!(nd, Vector{Int}())
-function _getinterior!(nd::UnsortedNestedDissection, interior::Vector{Int})
+getinterior(nd::NestedDissection) = _getinterior!(nd, Vector{Int}())
+function _getinterior!(nd::NestedDissection, interior::Vector{Int})
   if !isnothing(nd.left) interior = _getinterior!(nd.left, interior) end
   if !isnothing(nd.right) interior = _getinterior!(nd.right, interior) end
   return [interior; nd.int]
 end
-getinterior(nd::SortedNestedDissection) = 1:nd.int[end]
+getinterior(nd::NestedDissection) = 1:nd.int[end]
 getboundary(nd::NestedDissection) = nd.bnd
 
 # convenience function for reading in my own serialized elimination tree format
@@ -107,13 +120,13 @@ function parse_elimtree(fathers::Vector{Int}, lsons::Vector{Int}, rsons::Vector{
   sind = Stack{Int}()
   push!(sind, roots[1])
   ilast = -2
-  snodes = Stack{UnsortedNestedDissection}()
+  snodes = Stack{NestedDissection}()
 
   while !isempty(sind)
     i = first(sind)
     # moving up/down or a leaf?
     if rsons[i] == -1 && lsons[i] == -1 # at a leaf
-      push!(snodes, UNDNode(inter[1:ninter[i], i], bound[1:nbound[i], i]))
+      push!(snodes, NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i]))
       ilast = pop!(sind)
     elseif ilast == rsons[i] # moving up from the right
       right = pop!(snodes)
@@ -122,12 +135,12 @@ function parse_elimtree(fathers::Vector{Int}, lsons::Vector{Int}, rsons::Vector{
       else
         left = nothing
       end
-      push!(snodes, UNDNode(inter[1:ninter[i], i], bound[1:nbound[i], i], left, right))
+      push!(snodes, NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i], left, right))
       ilast = pop!(sind)
     elseif ilast == lsons[i] && rsons[i] == -1 # moving up from the left but can't move down
       left = pop!(snodes)
       right = nothing
-      push!(snodes, UNDNode(inter[1:ninter[i], i], bound[1:nbound[i], i], left, right))
+      push!(snodes, NDNode(inter[1:ninter[i], i], bound[1:nbound[i], i], left, right))
       ilast = pop!(sind)
     elseif (ilast == lsons[i] && rsons[i] != -1) || (lsons[i] == -1 && rsons != -1) # move down to the right
       ilast = i

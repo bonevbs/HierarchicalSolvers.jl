@@ -2,25 +2,25 @@
 # Written by Boris Bonev, Feb. 2021
 
 ## Factorization routine
-function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, opts::SolverOptions=SolverOptions();  args...) where T
+function factor(A::SparseMatrixCSC{T}, nd::NestedDissection, nd_loc::NestedDissection, opts::SolverOptions=SolverOptions();  args...) where T
   opts = copy(opts; args...)
   chkopts!(opts)
   opts.swlevel < 0 ? swlevel = max(depth(nd) + opts.swlevel, 0) : swlevel = opts.swlevel
-  nd, nd_loc = symfact!(nd) # get the local indices
-  F = _factor(A, nd, nd_loc, 1; swlevel, opts.atol, opts.rtol, opts.leafsize, opts.kest, opts.stepsize, opts.verbose)
+  F = _factor(A, nd, nd_loc, 1; swlevel, opts.swsize, opts.atol, opts.rtol, opts.leafsize, opts.kest, opts.stepsize, opts.verbose)
   return F
 end
 
 # recursive definition of the internal factorization routine
-function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, level::Int; swlevel::Int, atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
+function _factor(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, level::Int; swlevel::Int, swsize::Int, atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
+  compression_flag = (level≤swlevel) && (length(nd.bnd)≥swsize) # determine whether compression is needed for this level
   if isleaf(nd)
     verbose && println("Factoring leafnode at level ", level)
-    return _factor_leaf(A, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize)
+    return _factor_leaf(A, nd, nd_loc, Val(compression_flag); atol, rtol, leafsize)
   elseif isbranch(nd)
-    Fl = _factor(A, nd.left, nd_loc.left, level+1; swlevel, atol, rtol, leafsize, kest, stepsize, verbose)
-    Fr = _factor(A, nd.right, nd_loc.right, level+1; swlevel, atol, rtol, leafsize, kest, stepsize, verbose)
+    Fl = _factor(A, nd.left, nd_loc.left, level+1; swlevel, swsize, atol, rtol, leafsize, kest, stepsize, verbose)
+    Fr = _factor(A, nd.right, nd_loc.right, level+1; swlevel, swsize, atol, rtol, leafsize, kest, stepsize, verbose)
     verbose && println("Factoring branchnode at level ", level)
-    return _factor_branch(A, Fl, Fr, nd, nd_loc, Val(level≤swlevel); atol, rtol, leafsize, kest, stepsize, verbose)
+    return _factor_branch(A, Fl, Fr, nd, nd_loc, Val(compression_flag); atol, rtol, leafsize, kest, stepsize, verbose)
   else
     throw(ErrorException("Expected nested dissection to be a binary tree. Found a node with only one child."))  
   end
@@ -28,30 +28,34 @@ end
 
 # factor leaf node without compressing it
 function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; args...) where T
-  int = nd.int; bnd = nd.bnd;
-  int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
-  D = A[int, int]
-  L = convert(Matrix, A[bnd, int]) / D
-  R = D \ convert(Matrix, A[int, bnd])
-  S = zeros(T, length(bnd), length(bnd))
-  perm = [int_loc; bnd_loc]
-  S[invperm(perm), invperm(perm)] = A[bnd, bnd] .- A[bnd, int] * R
-  return FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
+  @timeit to "leaf node" begin
+    int = nd.int; bnd = nd.bnd;
+    int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
+    D = Matrix(view(A, int, int))
+    L = Matrix(view(A, bnd, int)) / D
+    R = D \ Matrix(view(A,int, bnd))
+    S = zeros(T, length(bnd), length(bnd))
+    perm = [int_loc; bnd_loc]
+    S[invperm(perm), invperm(perm)] .= A[bnd, bnd] .- A[bnd, int] * R
+    return FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
+  end
 end
 
 # factor leaf node and compress to HSS form
 function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int) where T
-  int = nd.int; bnd = nd.bnd;
-  int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
-  D = A[int, int]
-  L = convert(Matrix, A[bnd, int]) / D
-  R = D \ convert(Matrix, A[int, bnd])
-  S = zeros(T, length(bnd), length(bnd))
-  perm = [int_loc; bnd_loc]
-  S[invperm(perm), invperm(perm)] = A[bnd, bnd] .- A[bnd, int] * R
-  cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
-  hssS = compress(S, cl, cl; atol=atol, rtol=rtol)
-  return FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
+  @timeit to "leaf node" begin
+    int = nd.int; bnd = nd.bnd;
+    int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
+    D = Matrix(view(A, int, int))
+    L = Matrix(view(A, bnd, int)) / D
+    R = D \ Matrix(view(A,int, bnd))
+    S = zeros(T, length(bnd), length(bnd))
+    perm = [int_loc; bnd_loc]
+    S[invperm(perm), invperm(perm)] .= A[bnd, bnd] .- A[bnd, int] * R
+    cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
+    hssS = compress(S, cl, cl; atol=atol, rtol=rtol)
+    return FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
+  end
 end
 
 # factor branch node without compressing it
@@ -75,7 +79,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
     S = Abb - Abi*R
     perm = [nd_loc.int; nd_loc.bnd];
   end
-  return FactorNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
+  return FactorNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr)
 end
 
 # factor node matrix free and compress it
@@ -95,13 +99,13 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   end
 
   # block-factorization
-  @timeit to "factor diagonal block" begin
+  @timeit to "factor diagonal block (compressed)" begin
     D = blockfactor(Aii; atol, rtol)
   end
 
   # use randomized compression to get the low-rank representation
   # TODO: replace this with c_tol
-  @timeit to "Gauss transforms" begin
+  @timeit to "Gauss transforms (compressed)" begin
     # build operators
     Lop, Rop = _gauss_transforms(D, Aib, Abi)
 
@@ -112,13 +116,13 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   end
 
   # use randomized compression to compute the HSS form of the Schur complement
-  @timeit to "Schur complement" begin
+  @timeit to "Schur complement (compressed)" begin
     perm = [nd_loc.int; nd_loc.bnd]
     Smap = _schur_complement(Abb, Abi, R, perm)
     cl = bisection_cluster((length(int_loc), length(int_loc)+length(bnd_loc)); leafsize)
     hssS = randcompress_adaptive(Smap, cl, cl; kest=kest, atol=atol, rtol=rtol, verbose=verbose)
   end
-  return FactorNode(D, hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr) # remove local branch storage
+  return FactorNode(D, hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr)
 end
 
 # general routine for assembling the new block matrices

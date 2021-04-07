@@ -111,13 +111,12 @@ function blockfactor(A::BlockMatrix, opts::SolverOptions=SolverOptions();  args.
   return BlockFactorization(BlockMatrix(A.A11, A.A12, A.A21, S22))
 end
 
-function blockfactor(A::BlockMatrix{T, HssMatrix{T}, HssMatrix{T}, HssMatrix{T}, HssMatrix{T}}, opts::SolverOptions=SolverOptions();  args...) where T
+function blockfactor(A::BlockMatrix{T, HT, HT, HT, HT}, opts::SolverOptions=SolverOptions();  args...) where HT<:HssMatrix{T} where T
   opts = copy(opts; args...)
   chkopts!(opts)
   size(A.A11,1) == size(A.A11,2) || throw(DimensionMismatch("First block of A is not square."))
   size(A.A22,1) == size(A.A22,2) || throw(DimensionMismatch("Second block of A is not square."))
 
-  println("got called!")
   S22 = A.A22 - A.A21*(A.A11\A.A12)
   S22 = recompress!(S22; atol=opts.atol, rtol=opts.rtol)
   return BlockFactorization(BlockMatrix(A.A11, A.A12, A.A21, S22))
