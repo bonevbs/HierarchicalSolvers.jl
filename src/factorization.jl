@@ -92,6 +92,8 @@ end
 
 # factor node matrix free and compress it
 function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
+  # int1 = contigious(nd.left.bnd[nd_loc.left.int]); bnd1 = contigious(nd.left.bnd[nd_loc.left.bnd]);
+  # int2 = contigious(nd.right.bnd[nd_loc.right.int]); bnd2 = contigious(nd.right.bnd[nd_loc.right.bnd]); 
   int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
   int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
@@ -134,7 +136,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
 end
 
 # general routine for assembling the new block matrices
-function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::AbstractMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; args...) where T
+function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::AbstractMatrix{T}, int1::AbstractVector{Int}, int2::AbstractVector{Int}, bnd1::AbstractVector{Int}, bnd2::AbstractVector{Int}; args...) where T
   ni1 = length(int1); nb1 = length(bnd1)
   ni2 = length(int2); nb2 = length(bnd2)
   Aii = BlockMatrix(S1[1:ni1, 1:ni1], Matrix(view(A, int1, int2)), Matrix(view(A, int2, int1)), S2[1:ni2, 1:ni2])
@@ -145,7 +147,7 @@ function _assemble_blocks(A::AbstractMatrix{T}, S1::AbstractMatrix{T}, S2::Abstr
 end
 
 # For HSS matrices we want to specialize the routine in order to exploit the pre-determined blocking which exposes interior DOFs
-function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::Vector{Int}, int2::Vector{Int}, bnd1::Vector{Int}, bnd2::Vector{Int}; atol::Float64, rtol::Float64, verbose=false) where T
+function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::AbstractVector{Int}, int2::AbstractVector{Int}, bnd1::AbstractVector{Int}, bnd2::AbstractVector{Int}; atol::Float64, rtol::Float64, verbose=false) where T
   rcl1, ccl1 = cluster(S1.A11); rcl2, ccl2 = cluster(S2.A11)
   # extract generators of children Schur complements
   Uint1, Vint1 = generators(S1.A11); Uint1 = Uint1*S1.B12

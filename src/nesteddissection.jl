@@ -5,7 +5,7 @@
 
 # Relies on the Binary tree structure defined in HssMatrices (Maybe change that?)
 const IndexSet = Union{Vector{Int}, UnitRange{Int}}
-const NestedDissection = BinaryNode{Tuple{T, T}} where T<:AbstractVector{Int}
+const NestedDissection = BinaryNode{Tuple{T, S}} where {T<:AbstractVector{Int}, S<:AbstractVector{Int}}
 
 _getproperty(x::NestedDissection, ::Val{s}) where {s} = getfield(x, s)
 _getproperty(x::NestedDissection, ::Val{:int}) = x.data[1]
@@ -88,13 +88,7 @@ function permuted!(nd::NestedDissection, perm::Vector{Int})
 end
 
 # optimizes index sets into unit-ranges for faster access
-function contigious!(nd::NestedDissection)
-  if !isnothing(nd.left) nd.left = contigious!(nd.left) end
-  if !isnothing(nd.right) nd.right = contigious!(nd.right) end
-  if nd.int == nd.int[1]:nd.int[end]; nd.int = nd.int[1]:nd.int[end]; end
-  if nd.bnd == nd.bnd[1]:nd.bnd[end]; nd.bnd = nd.bnd[1]:nd.bnd[end]; end
-  return nd
-end
+@inline contigious(idx::Vector{Int}) = idx[1]:idx[end] == idx ? (idx[1]:idx[end]) : idx
 
 # recursively compute the interior
 getinterior(nd::NestedDissection) = _getinterior!(nd, Vector{Int}())

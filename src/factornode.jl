@@ -23,22 +23,20 @@ mutable struct FactorNode{T<:Number, TD<:MatFact, TS<:AbstractMatrix{T}, TL<:Abs
 
   # internal constructors with checks for dimensions
   global function _FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
-     int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T
+     int::AbstractVector{Int}, bnd::AbstractVector{Int}, int_loc::AbstractVector{Int}, bnd_loc::AbstractVector{Int}) where T
     new{T, typeof(D), typeof(S), typeof(L), typeof(R)}(D, S, L, R, int, bnd, int_loc, bnd_loc, nothing, nothing)
   end
   # parent constructor, finds the local indices of the children indices automatically 
   global function _FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
-      int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}, left::FactorNode{T}, right::FactorNode{T}) where T
+      int::AbstractVector{Int}, bnd::AbstractVector{Int}, int_loc::AbstractVector{Int}, bnd_loc::AbstractVector{Int}, left::FactorNode{T}, right::FactorNode{T}) where T
     # maybe also implement a check to make sure that disjointedness is guaranteed
     new{T, typeof(D), typeof(S), typeof(L), typeof(R)}(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
   end
 end
 
 # outer constructors
-FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
-  int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
-FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T},
-  int::Vector{Int}, bnd::Vector{Int}, int_loc::Vector{Int}, bnd_loc::Vector{Int}, left::FactorNode{T}, right::FactorNode{T}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
+FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T}, int, bnd, int_loc, bnd_loc) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc)
+FactorNode(D::MatFact{T}, S::AbstractMatrix{T}, L::AbstractMatrix{T}, R::AbstractMatrix{T}, int, bnd, int_loc, bnd_loc, left::FactorNode{T}, right::FactorNode{T}) where T = _FactorNode(D, S, L, R, int, bnd, int_loc, bnd_loc, left, right)
 
 eltype(::FactorNode{T}) where T = T
 Base.show(io::IO, node::FactorNode) = print(io, "FactorNode{$(eltype(node))}")

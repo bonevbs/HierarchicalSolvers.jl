@@ -21,7 +21,7 @@ module HierarchicalSolvers
   # HierarchicalSolvers.jl
   export SolverOptions
   # nesteddissection.jl
-  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior, getboundary, symfact!, permuted!, contigious!
+  export NDNode, NestedDissection, parse_elimtree, postorder, getinterior, getboundary, symfact!, permuted!, contigious
   # lowrankextensions.jl
   # blockmatrix.jl
   # factornode.jl
