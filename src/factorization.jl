@@ -92,10 +92,10 @@ end
 
 # factor node matrix free and compress it
 function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
-  # int1 = contigious(nd.left.bnd[nd_loc.left.int]); bnd1 = contigious(nd.left.bnd[nd_loc.left.bnd]);
-  # int2 = contigious(nd.right.bnd[nd_loc.right.int]); bnd2 = contigious(nd.right.bnd[nd_loc.right.bnd]); 
-  int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
-  int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
+  int1 = contigious(nd.left.bnd[nd_loc.left.int]); bnd1 = contigious(nd.left.bnd[nd_loc.left.bnd]);
+  int2 = contigious(nd.right.bnd[nd_loc.right.int]); bnd2 = contigious(nd.right.bnd[nd_loc.right.bnd]); 
+  # int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
+  # int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
 
   # make sure clusters are matching
@@ -119,6 +119,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
     # build operators
     Lop, Rop = _gauss_transforms(D, Aib, Abi)
 
+    # this is the final part which is type unstable!!!!!
     qrfL = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
     L = LowRankMatrix(qrfL.Q, collect(qrfL.R[:,invperm(qrfL.p)]'))
     qrfR = pqrfact(Rop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
@@ -207,7 +208,7 @@ function _schur_complement(Abb::BlockMatrix{T}, Abi::BlockMatrix{T}, R::LowRankM
   Smul = (y, _, x) -> _sample_schur!(y, Abb, U, x, iperm)
   Smulc = (y, _, x) -> _sample_schur!(y, Abb', U', x, iperm)
   Sidx = (i,j) -> _getindex_schur(Abb, U, perm, i, j)
-  return LinearMap{T}(size(Abb)..., Smul, Smulc, Sidx, nothing)
+  return LinearMap{T}(size(Abb)..., Smul, Smulc, Sidx)
 end
 
 # function for correctly applying the Schur complement
@@ -221,5 +222,5 @@ end
 
 function _getindex_schur(A::AbstractMatrix{T}, U::LowRankMatrix{T}, perm::Vector{Int}, i, j) where T
   ii = perm[i]; jj = perm[j];
-  return A[ii, jj] .- U.U[ii, :]*U.V[jj,:]'
+  return A[ii, jj] - U.U[ii, :]*U.V[jj,:]'
 end

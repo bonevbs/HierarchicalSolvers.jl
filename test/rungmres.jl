@@ -20,7 +20,7 @@ using TimerOutputs
 include("../util/read_problem.jl")
 #A, b, nd = read_problem("./test/test.mat")
 #A, b, nd = read_problem("./test/poisson2d_p1_h64.mat")
-A, b, nd = read_problem("./test/poisson2d_p1_h256.mat")
+A, b, nd = read_problem("./test/poisson2d_p1_h512.mat")
 nd, nd_loc = symfact!(nd)
 perm = postorder(nd)
 A = permute(A, perm, perm)
