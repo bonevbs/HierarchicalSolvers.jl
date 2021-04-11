@@ -51,8 +51,8 @@ function maxrank(F::FactorNode)
   if !isnothing(F.left) rkl = maxrank(F.left) end
   if !isnothing(F.right) rkr = maxrank(F.right) end
   rkS = ishss(F.S) ? hssrank(F.S) : 0
-  rkL = F.L <: LowRankMatrix ? hssrank(F.L) : 0
-  rkR = F.r <: LowRankMatrix ? hssrank(F.R) : 0
+  rkL = typeof(F.L) <: LowRankMatrix ? rank(F.L) : 0
+  rkR = typeof(F.R) <: LowRankMatrix ? rank(F.R) : 0
   return max(rkl, rkr, rkS, rkL, rkR)
 end
 
