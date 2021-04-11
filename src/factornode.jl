@@ -48,8 +48,8 @@ isbranch(F::FactorNode) = !isnothing(F.left) && !isnothing(F.right)
 # function that recursively computes maximum rank
 function maxrank(F::FactorNode)
   rkl = 0; rkr = 0
-  if !isnothing(F.left) rkl = maxrank(F) end
-  if !isnothing(F.right) rkr = maxrank(F) end
+  if !isnothing(F.left) rkl = maxrank(F.left) end
+  if !isnothing(F.right) rkr = maxrank(F.right) end
   rkS = ishss(F.S) ? hssrank(F.S) : 0
   rkL = F.L <: LowRankMatrix ? hssrank(F.L) : 0
   rkR = F.r <: LowRankMatrix ? hssrank(F.R) : 0
