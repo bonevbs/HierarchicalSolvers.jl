@@ -45,6 +45,17 @@ Base.show(io::IO, node::FactorNode) = print(io, "FactorNode{$(eltype(node))}")
 isleaf(F::FactorNode) = isnothing(F.left) && isnothing(F.right)
 isbranch(F::FactorNode) = !isnothing(F.left) && !isnothing(F.right)
 
+# function that recursively computes maximum rank
+function maxrank(F::FactorNode)
+  rkl = 0; rkr = 0
+  if !isnothing(F.left) rkl = maxrank(F) end
+  if !isnothing(F.right) rkr = maxrank(F) end
+  rkS = ishss(F.S) ? hssrank(F.S) : 0
+  rkL = F.L <: LowRankMatrix ? hssrank(F.L) : 0
+  rkR = F.r <: LowRankMatrix ? hssrank(F.R) : 0
+  return max(rkl, rkr, rkS, rkL, rkR)
+end
+
 ## apply the factorization to a matrix
 #solve(F, rhs) = solve!(F, copy(rhs))
 #ldiv!(F::FactorNode, rhs::AbstractMatrix) = solve!(F, rhs)

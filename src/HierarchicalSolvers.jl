@@ -25,7 +25,7 @@ module HierarchicalSolvers
   # lowrankextensions.jl
   # blockmatrix.jl
   # factornode.jl
-  export FactorNode, solve, solve!
+  export FactorNode, solve, solve!, maxrank
   # factorization.jl
   export factor
 

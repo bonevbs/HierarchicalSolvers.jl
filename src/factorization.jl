@@ -45,7 +45,7 @@ function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::Nested
   return FactorNode(D, S[perm, perm], L, R, int, bnd, int_loc, bnd_loc)
 end
 
-# factor leaf node and compress to HSS form
+# factor leaf node and compress to HSS form (almost never gets called unless compression starts at the bottom level)
 function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int) where T
   @timeit to "factor diagonal block (leaves)" begin  
     int = nd.int; bnd = nd.bnd;
