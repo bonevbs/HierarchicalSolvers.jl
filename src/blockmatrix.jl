@@ -64,7 +64,15 @@ function getindex(B::BlockMatrix, i::Int, j::Int)
 end
 
 # cast to matrix
-Matrix(B::BlockMatrix) = [Matrix(B.A11) Matrix(B.A12); Matrix(B.A21) Matrix(B.A22)]
+function Matrix(B::BlockMatrix)
+  m1, n1 = size(B.A11)
+  A = Matrix{eltype(B)}(undef, size(B)...)
+  A[1:m1,1:n1] .= Matrix(B.A11)
+  A[1:m1,n1+1:end] .= Matrix(B.A12)
+  A[m1+1:end,1:n1] .= Matrix(B.A21)
+  A[m1+1:end,n1+1:end] .= Matrix(B.A22)
+  return A
+end
 
 # adjoint/transpose
 adjoint(B::BlockMatrix) = BlockMatrix(adjoint(B.A11), adjoint(B.A21), adjoint(B.A12), adjoint(B.A22))

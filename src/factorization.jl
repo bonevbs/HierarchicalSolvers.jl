@@ -77,25 +77,25 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   end
 
   @timeit to "factor diagonal block" begin
-    Aii = blockfactor(Aii; atol, rtol)
+    D = blockfactor(Aii; atol, rtol)
   end
   @timeit to "Gauss transforms" begin
-    L = blockrdiv(Abi, Aii)
-    R = blockldiv(Aii, Aib)
+    L = blockrdiv(Abi, D)
+    R = blockldiv(D, Aib)
   end
   @timeit to "Schur complement" begin
     S = Abb - Abi*R
     perm = [nd_loc.int; nd_loc.bnd];
   end
-  return FactorNode(Aii, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr)
+  return FactorNode(D, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr)
 end
 
 # factor node matrix free and compress it
 function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int, kest::Int, stepsize::Int, verbose::Bool) where T
-  int1 = contigious(nd.left.bnd[nd_loc.left.int]); bnd1 = contigious(nd.left.bnd[nd_loc.left.bnd]);
-  int2 = contigious(nd.right.bnd[nd_loc.right.int]); bnd2 = contigious(nd.right.bnd[nd_loc.right.bnd]); 
-  # int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
-  # int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
+  int1 = contigious(nd.left.bnd[nd_loc.left.int]); bnd1 = nd.left.bnd[nd_loc.left.bnd];
+  int2 = contigious(nd.right.bnd[nd_loc.right.int]); bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
+  #int1 = nd.left.bnd[nd_loc.left.int]; bnd1 = nd.left.bnd[nd_loc.left.bnd];
+  #int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
 
   # make sure clusters are matching
@@ -117,13 +117,8 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   # TODO: replace this with c_tol
   @timeit to "Gauss transforms (compressed)" begin
     # build operators
-    Lop, Rop = _gauss_transforms(D, Aib, Abi)
-
-    # this is the final part which is type unstable!!!!!
-    qrfL = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
-    L = LowRankMatrix(qrfL.Q, collect(qrfL.R[:,invperm(qrfL.p)]'))
-    qrfR = pqrfact(Rop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
-    R = LowRankMatrix(qrfR.Q, collect(qrfR.R[:,invperm(qrfR.p)]'))
+    L = _lgauss_transform(D, Abi, 0.5*atol, 0.5*rtol)
+    R = _rgauss_transform(D, Aib, 0.5*atol, 0.5*rtol)
   end
 
   # use randomized compression to compute the HSS form of the Schur complement
@@ -151,16 +146,25 @@ end
 function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::AbstractVector{Int}, int2::AbstractVector{Int}, bnd1::AbstractVector{Int}, bnd2::AbstractVector{Int}; atol::Float64, rtol::Float64, verbose=false) where T
   rcl1, ccl1 = cluster(S1.A11); rcl2, ccl2 = cluster(S2.A11)
   # extract generators of children Schur complements
+  @timeit ta "generators" begin
   Uint1, Vint1 = generators(S1.A11); Uint1 = Uint1*S1.B12
   Uint2, Vint2 = generators(S2.A11); Uint2 = Uint2*S2.B12
   Ubnd1, Vbnd1 = generators(S1.A22); Ubnd1 = Ubnd1*S1.B21
   Ubnd2, Vbnd2 = generators(S2.A22); Ubnd2 = Ubnd2*S2.B21
-
+  end
   # form the blocks
+  @timeit ta "Aii" begin
   Aii = BlockMatrix(S1.A11, hss(A[int1, int2], rcl1, ccl2; atol=atol, rtol=rtol), hss(A[int2, int1], rcl2, ccl1; atol=atol, rtol=rtol), S2.A11) # check hssranks of the offdiagonal guys
+  end
+  @timeit ta "Aib" begin
   Aib = BlockMatrix(LowRankMatrix(Uint1, Vbnd1), A[int1, bnd2], A[int2, bnd1], LowRankMatrix(Uint2, Vbnd2))
+  end
+  @timeit ta "Abi" begin
   Abi = BlockMatrix(LowRankMatrix(Ubnd1, Vint1), A[bnd1, int2], A[bnd2, int1], LowRankMatrix(Ubnd2, Vint2))
+  end
+  @timeit ta "Abb" begin
   Abb = BlockMatrix(S1.A22, A[bnd1, bnd2], A[bnd2, bnd1], S2.A22)
+  end
   return Aii, Aib, Abi, Abb
 end
 
@@ -192,14 +196,62 @@ function _equilibrate_clusters(S1::HssMatrix, S2::HssMatrix)
   return S1, S2
 end
 
-function _gauss_transforms(D::BlockFactorization{T}, Aib::BlockMatrix{T}, Abi::BlockMatrix{T}) where T
-  Lmul = (y, _, x) ->  y .= Abi*blockldiv!(D, x)
-  Lmulc = (y, _, x) ->  y .= blockrdiv!(x'*Abi, D)'
-  Rmul = (y, _, x) ->  y .= blockldiv!(D, Aib*x)
-  Rmulc = (y, _, x) ->  y .= (blockrdiv!(x', D)*Aib)'
-  Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing)
-  Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing)
-  return Lop, Rop
+# using the old method of randomized sampling
+# function _gauss_transforms(D::BlockFactorization{T}, Aib::BlockMatrix{T}, Abi::BlockMatrix{T}; atol::Float64, rtol::Float64) where T
+#   Lmul = (y, _, x) ->  y .= Abi*blockldiv!(D, x)
+#   Lmulc = (y, _, x) ->  y .= blockrdiv!(x'*Abi, D)'
+#   Rmul = (y, _, x) ->  y .= blockldiv!(D, Aib*x)
+#   Rmulc = (y, _, x) ->  y .= (blockrdiv!(x', D)*Aib)'
+#   Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing)
+#   Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing)
+
+#   # do the actual compression via randomized sampling
+#   # this is the final part which is type unstable!!!!!
+#   qrfL = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
+#   L = LowRankMatrix(qrfL.Q, collect(qrfL.R[:,invperm(qrfL.p)]'))
+#   qrfR = pqrfact(Rop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
+#   R = LowRankMatrix(qrfR.Q, collect(qrfR.R[:,invperm(qrfR.p)]'))
+#   return L, R
+# end
+
+## Gauss transforms
+function _lgauss_transform(D::BlockFactorization{T}, Abi::BlockMatrix{T}, atol::Float64, rtol::Float64) where T
+  F = pqrfact(Matrix(Abi), sketch=:none, atol=atol, rtol=rtol)
+  L = LowRankMatrix(F.Q, Matrix(F.R[:,invperm(F.p)]'))
+  L.V = blockrdiv!(Matrix(L.V'), D)'
+  return L
+end
+function _rgauss_transform(D::BlockFactorization{T}, Aib::BlockMatrix{T}, atol::Float64, rtol::Float64) where T
+  F = pqrfact(Matrix(Aib), sketch=:none, atol=atol, rtol=rtol)
+  R = LowRankMatrix(F.Q, collect(F.R[:,invperm(F.p)]'))
+  R.U = blockldiv!(D, R.U)
+  return R
+end
+
+function _lgauss_transform(D::BlockFactorization{T}, Abi::BlockMatrix{T, LowRankMatrix{T}, T12, T21, LowRankMatrix{T}}, atol::Float64, rtol::Float64) where {T, T12<:AbstractSparseMatrix{T}, T21<:AbstractSparseMatrix{T}}
+  L = LowRankMatrix(blkdiagm(Abi.A11.U, Abi.A22.U), blkdiagm(Abi.A11.V, Abi.A22.V))
+  if nnz(Abi.A12)+nnz(Abi.A21) > 0
+    nb1, ni1 = size(Abi.A11); nb2, ni2 = size(Abi.A22)
+    X = BlockMatrix(Zeros{T}(nb1, ni1), Abi.A12, Abi.A21, Zeros{T}(nb2,ni2))
+    F = pqrfact(X, sketch=:randn, atol=atol, rtol=rtol)
+    L.U = [L.U F.Q]
+    L.V = [L.V Matrix(F.R[:,invperm(F.p)]')]
+  end
+  L.V = blockrdiv!(Matrix(L.V'), D)'
+  return L
+end
+
+function _rgauss_transform(D::BlockFactorization{T}, Aib::BlockMatrix{T, LowRankMatrix{T}, T12, T21, LowRankMatrix{T}}, atol::Float64, rtol::Float64) where {T, T12<:AbstractSparseMatrix{T}, T21<:AbstractSparseMatrix{T}}
+  R = LowRankMatrix(blkdiagm(Aib.A11.U, Aib.A22.U), blkdiagm(Aib.A11.V, Aib.A22.V))
+  if nnz(Aib.A12)+nnz(Aib.A21) > 0
+    ni1, nb1 = size(Aib.A11); ni2, nb2 = size(Aib.A22)
+    X = BlockMatrix(Zeros{T}(ni1, nb1), Aib.A12, Aib.A21, Zeros{T}(ni2,nb2))
+    F = pqrfact(X, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
+    R.U = [R.U F.Q]
+    R.V = [R.V Matrix(F.R[:,invperm(F.p)]')]
+  end
+  R.U = blockldiv!(D, R.U)
+  return R
 end
 
 function _schur_complement(Abb::BlockMatrix{T}, Abi::BlockMatrix{T}, R::LowRankMatrix{T}, perm::Vector{Int}) where T

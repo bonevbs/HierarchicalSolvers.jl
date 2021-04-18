@@ -8,11 +8,13 @@ module HierarchicalSolvers
   using LinearAlgebra
   using HssMatrices
   using SparseArrays
+  using FillArrays
   using LowRankApprox
   using DataStructures
   using TimerOutputs
 
   const to = TimerOutput()
+  const ta = TimerOutput()
 
   import Base: getproperty, setproperty!, size, eltype, getindex, *, /, \, copy, adjoint, transpose
   import LinearAlgebra: ldiv!, rdiv!, mul!
@@ -79,6 +81,8 @@ module HierarchicalSolvers
     0. < opts.c_tol ≤ 1. || throw(ArgumentError("c_tol"))
     opts.leafsize ≥ 1 || throw(ArgumentError("leafsize"))
   end
+
+  @eval SparseArrays include("mygetindex.jl");
 
   include("nesteddissection.jl")
   include("lowrankextensions.jl")
