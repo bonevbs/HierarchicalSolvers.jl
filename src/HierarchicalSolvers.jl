@@ -52,7 +52,7 @@ module HierarchicalSolvers
       1e-6,   # relative compression tolerance
       0.5,    # relative factor to tune low-rank compression tolerance w.r.t HSS compression tolerance
       32,     # HSS leaf size
-      30,     # rank estimate
+      -1,     # rank estimate
       10,     # stepsize
       false,  # output Important information
       )

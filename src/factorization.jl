@@ -121,6 +121,10 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
     R = _rgauss_transform(D, Aib, 0.5*atol, 0.5*rtol)
   end
 
+  if kest < 0
+    kest = Int(ceil(0.5*rank(L)))
+  end
+
   # use randomized compression to compute the HSS form of the Schur complement
   @timeit to "Schur complement (compressed)" begin
     perm = [nd_loc.int; nd_loc.bnd]
@@ -196,24 +200,6 @@ function _equilibrate_clusters(S1::HssMatrix, S2::HssMatrix)
   return S1, S2
 end
 
-# using the old method of randomized sampling
-# function _gauss_transforms(D::BlockFactorization{T}, Aib::BlockMatrix{T}, Abi::BlockMatrix{T}; atol::Float64, rtol::Float64) where T
-#   Lmul = (y, _, x) ->  y .= Abi*blockldiv!(D, x)
-#   Lmulc = (y, _, x) ->  y .= blockrdiv!(x'*Abi, D)'
-#   Rmul = (y, _, x) ->  y .= blockldiv!(D, Aib*x)
-#   Rmulc = (y, _, x) ->  y .= (blockrdiv!(x', D)*Aib)'
-#   Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing)
-#   Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing)
-
-#   # do the actual compression via randomized sampling
-#   # this is the final part which is type unstable!!!!!
-#   qrfL = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
-#   L = LowRankMatrix(qrfL.Q, collect(qrfL.R[:,invperm(qrfL.p)]'))
-#   qrfR = pqrfact(Rop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
-#   R = LowRankMatrix(qrfR.Q, collect(qrfR.R[:,invperm(qrfR.p)]'))
-#   return L, R
-# end
-
 ## Gauss transforms
 function _lgauss_transform(D::BlockFactorization{T}, Abi::BlockMatrix{T}, atol::Float64, rtol::Float64) where T
   F = pqrfact(Matrix(Abi), sketch=:none, atol=atol, rtol=rtol)
@@ -238,9 +224,9 @@ function _lgauss_transform(D::BlockFactorization{T}, Abi::BlockMatrix{T, LowRank
     L.V = [L.V Matrix(F.R[:,invperm(F.p)]')]
   end
   L.V = blockrdiv!(Matrix(L.V'), D)'
+  #L = _recompress!(L, atol, rtol)
   return L
 end
-
 function _rgauss_transform(D::BlockFactorization{T}, Aib::BlockMatrix{T, LowRankMatrix{T}, T12, T21, LowRankMatrix{T}}, atol::Float64, rtol::Float64) where {T, T12<:AbstractSparseMatrix{T}, T21<:AbstractSparseMatrix{T}}
   R = LowRankMatrix(blkdiagm(Aib.A11.U, Aib.A22.U), blkdiagm(Aib.A11.V, Aib.A22.V))
   if nnz(Aib.A12)+nnz(Aib.A21) > 0
@@ -251,8 +237,26 @@ function _rgauss_transform(D::BlockFactorization{T}, Aib::BlockMatrix{T, LowRank
     R.V = [R.V Matrix(F.R[:,invperm(F.p)]')]
   end
   R.U = blockldiv!(D, R.U)
+  #R = _recompress!(R, atol, rtol)
   return R
 end
+
+# function _lgauss_transform(D::BlockFactorization{T}, Abi::BlockMatrix{T, LowRankMatrix{T}, T12, T21, LowRankMatrix{T}}, atol::Float64, rtol::Float64) where {T, T12<:AbstractSparseMatrix{T}, T21<:AbstractSparseMatrix{T}}
+#   Lmul = (y, _, x) ->  y .= Abi*blockldiv!(D, x)
+#   Lmulc = (y, _, x) ->  y .= blockrdiv!(x'*Abi, D)'
+#   Lop = LinearOperator{T}(size(Abi)..., Lmul, Lmulc, nothing)
+#   qrfL = pqrfact(Lop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
+#   L = LowRankMatrix(qrfL.Q, collect(qrfL.R[:,invperm(qrfL.p)]'))
+#   return L
+# end
+# function _rgauss_transform(D::BlockFactorization{T}, Aib::BlockMatrix{T, LowRankMatrix{T}, T12, T21, LowRankMatrix{T}}, atol::Float64, rtol::Float64) where {T, T12<:AbstractSparseMatrix{T}, T21<:AbstractSparseMatrix{T}}
+#   Rmul = (y, _, x) ->  y .= blockldiv!(D, Aib*x)
+#   Rmulc = (y, _, x) ->  y .= (blockrdiv!(x', D)*Aib)'
+#   Rop = LinearOperator{T}(size(Aib)..., Rmul, Rmulc, nothing)
+#   qrfR = pqrfact(Rop, sketch=:randn, atol=0.5*atol, rtol=0.5*rtol)
+#   R = LowRankMatrix(qrfR.Q, collect(qrfR.R[:,invperm(qrfR.p)]'))
+#   return R
+# end
 
 function _schur_complement(Abb::BlockMatrix{T}, Abi::BlockMatrix{T}, R::LowRankMatrix{T}, perm::Vector{Int}) where T
   iperm = invperm(perm)
@@ -275,4 +279,14 @@ end
 function _getindex_schur(A::AbstractMatrix{T}, U::LowRankMatrix{T}, perm::Vector{Int}, i, j) where T
   ii = perm[i]; jj = perm[j];
   return A[ii, jj] - U.U[ii, :]*U.V[jj,:]'
+end
+
+function _recompress!(A::LowRankMatrix{T}, atol::Float64, rtol::Float64) where T
+  VQ, VR = qr(A.V)
+  A.V = VQ
+  A.U = A.U*VR'
+  FU = pqrfact(A.U, sketch=:none, atol=atol, rtol=rtol)
+  A.U = FU.Q
+  A.V = A.V*FU.R[:,invperm(FU.p)]'
+  return A
 end
