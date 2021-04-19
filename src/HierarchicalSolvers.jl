@@ -11,10 +11,6 @@ module HierarchicalSolvers
   using FillArrays
   using LowRankApprox
   using DataStructures
-  using TimerOutputs
-
-  const to = TimerOutput()
-  const ta = TimerOutput()
 
   import Base: getproperty, setproperty!, size, eltype, getindex, *, /, \, copy, adjoint, transpose
   import LinearAlgebra: ldiv!, rdiv!, mul!

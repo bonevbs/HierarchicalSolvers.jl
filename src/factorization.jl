@@ -28,41 +28,33 @@ end
 
 # factor leaf node without compressing it
 function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{false}; args...) where T
-  @timeit to "factor diagonal block (leaves)" begin
-    int = nd.int; bnd = nd.bnd;
-    int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
-    D = Matrix(view(A, int, int))
-  end
-  @timeit to "Gauss transforms (leaves)" begin
-    Abi = Matrix(view(A, bnd, int))
-    L = Abi / D
-    R = D \ Matrix(view(A,int, bnd))
-  end
-  @timeit to "Schur complement (leaves)" begin
-    perm = [int_loc; bnd_loc]
-    S = Matrix(view(A,bnd, bnd)) .- Abi * R
-  end
+  int = nd.int; bnd = nd.bnd;
+  int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
+  D = Matrix(view(A, int, int))
+
+  Abi = Matrix(view(A, bnd, int))
+  L = Abi / D
+  R = D \ Matrix(view(A,int, bnd))
+
+  perm = [int_loc; bnd_loc]
+  S = Matrix(view(A,bnd, bnd)) .- Abi * R
   return FactorNode(D, S[perm, perm], L, R, int, bnd, int_loc, bnd_loc)
 end
 
 # factor leaf node and compress to HSS form (almost never gets called unless compression starts at the bottom level)
 function _factor_leaf(A::AbstractMatrix{T}, nd::NestedDissection, nd_loc::NestedDissection, ::Val{true}; atol::Float64, rtol::Float64, leafsize::Int) where T
-  @timeit to "factor diagonal block (leaves)" begin  
-    int = nd.int; bnd = nd.bnd;
-    int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
-    D = Matrix(view(A, int, int))
-  end
-  @timeit to "Gauss transforms (leaves)" begin
-    Abi = Matrix(view(A, bnd, int))
-    L = Matrix(view(A, bnd, int)) / D
-    R = D \ Matrix(view(A,int, bnd))
-  end
-  @timeit to "Schur complement (leaves)" begin
-    perm = [int_loc; bnd_loc]
-    S = Matrix(view(A,bnd, bnd)) .- Abi * R
-    cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
-    hssS = compress(S[perm, perm], cl, cl; atol=atol, rtol=rtol)
-  end
+  int = nd.int; bnd = nd.bnd;
+  int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
+  D = Matrix(view(A, int, int))
+
+  Abi = Matrix(view(A, bnd, int))
+  L = Matrix(view(A, bnd, int)) / D
+  R = D \ Matrix(view(A,int, bnd))
+
+  perm = [int_loc; bnd_loc]
+  S = Matrix(view(A,bnd, bnd)) .- Abi * R
+  cl = bisection_cluster((length(int_loc), length(bnd)); leafsize)
+  hssS = compress(S[perm, perm], cl, cl; atol=atol, rtol=rtol)
   return FactorNode(D, hssS, L, R, int, bnd, int_loc, bnd_loc)
 end
 
@@ -72,21 +64,13 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   int2 = nd.right.bnd[nd_loc.right.int]; bnd2 = nd.right.bnd[nd_loc.right.bnd]; 
   int_loc = nd_loc.int; bnd_loc = nd_loc.bnd
   
-  @timeit to "assemble blocks" begin
-    Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
-  end
+  Aii, Aib, Abi, Abb = _assemble_blocks(A, Fl.S, Fr.S, int1, int2, bnd1, bnd2; atol, rtol)
 
-  @timeit to "factor diagonal block" begin
-    D = blockfactor(Aii; atol, rtol)
-  end
-  @timeit to "Gauss transforms" begin
-    L = blockrdiv(Abi, D)
-    R = blockldiv(D, Aib)
-  end
-  @timeit to "Schur complement" begin
-    S = Abb - Abi*R
-    perm = [nd_loc.int; nd_loc.bnd];
-  end
+  D = blockfactor(Aii; atol, rtol)
+  L = blockrdiv(Abi, D)
+  R = blockldiv(D, Aib)
+  S = Abb - Abi*R
+  perm = [nd_loc.int; nd_loc.bnd]
   return FactorNode(D, S[perm,perm], L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr)
 end
 
@@ -104,34 +88,26 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
   else
     S1, S2 = Fl.S, Fr.S
   end
-  @timeit to "assemble blocks (compressed)" begin
-    Aii, Aib, Abi, Abb = _assemble_blocks(A, S1, S2, int1, int2, bnd1, bnd2; atol, rtol)
-  end
+  Aii, Aib, Abi, Abb = _assemble_blocks(A, S1, S2, int1, int2, bnd1, bnd2; atol, rtol)
 
   # block-factorization
-  @timeit to "factor diagonal block (compressed)" begin
-    D = blockfactor(Aii; atol, rtol)
-  end
+  D = blockfactor(Aii; atol, rtol)
 
   # use randomized compression to get the low-rank representation
   # TODO: replace this with c_tol
-  @timeit to "Gauss transforms (compressed)" begin
-    # build operators
-    L = _lgauss_transform(D, Abi, 0.5*atol, 0.5*rtol)
-    R = _rgauss_transform(D, Aib, 0.5*atol, 0.5*rtol)
-  end
+  # build operators
+  L = _lgauss_transform(D, Abi, 0.5*atol, 0.5*rtol)
+  R = _rgauss_transform(D, Aib, 0.5*atol, 0.5*rtol)
 
   if kest < 0
     kest = Int(ceil(0.5*rank(L)))
   end
 
   # use randomized compression to compute the HSS form of the Schur complement
-  @timeit to "Schur complement (compressed)" begin
-    perm = [nd_loc.int; nd_loc.bnd]
-    Smap = _schur_complement(Abb, Abi, R, perm)
-    cl = bisection_cluster((length(int_loc), length(int_loc)+length(bnd_loc)); leafsize)
-    hssS = randcompress_adaptive(Smap, cl, cl; kest=kest, atol=atol, rtol=rtol, verbose=verbose)
-  end
+  perm = [nd_loc.int; nd_loc.bnd]
+  Smap = _schur_complement(Abb, Abi, R, perm)
+  cl = bisection_cluster((length(int_loc), length(int_loc)+length(bnd_loc)); leafsize)
+  hssS = randcompress_adaptive(Smap, cl, cl; kest=kest, atol=atol, rtol=rtol, verbose=verbose)
   return FactorNode(D, hssS, L, R, nd.int, nd.bnd, nd_loc.int, nd_loc.bnd, Fl, Fr)
 end
 
@@ -150,25 +126,16 @@ end
 function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{T}, int1::AbstractVector{Int}, int2::AbstractVector{Int}, bnd1::AbstractVector{Int}, bnd2::AbstractVector{Int}; atol::Float64, rtol::Float64, verbose=false) where T
   rcl1, ccl1 = cluster(S1.A11); rcl2, ccl2 = cluster(S2.A11)
   # extract generators of children Schur complements
-  @timeit ta "generators" begin
   Uint1, Vint1 = generators(S1.A11); Uint1 = Uint1*S1.B12
   Uint2, Vint2 = generators(S2.A11); Uint2 = Uint2*S2.B12
   Ubnd1, Vbnd1 = generators(S1.A22); Ubnd1 = Ubnd1*S1.B21
   Ubnd2, Vbnd2 = generators(S2.A22); Ubnd2 = Ubnd2*S2.B21
-  end
+
   # form the blocks
-  @timeit ta "Aii" begin
   Aii = BlockMatrix(S1.A11, hss(A[int1, int2], rcl1, ccl2; atol=atol, rtol=rtol), hss(A[int2, int1], rcl2, ccl1; atol=atol, rtol=rtol), S2.A11) # check hssranks of the offdiagonal guys
-  end
-  @timeit ta "Aib" begin
   Aib = BlockMatrix(LowRankMatrix(Uint1, Vbnd1), A[int1, bnd2], A[int2, bnd1], LowRankMatrix(Uint2, Vbnd2))
-  end
-  @timeit ta "Abi" begin
   Abi = BlockMatrix(LowRankMatrix(Ubnd1, Vint1), A[bnd1, int2], A[bnd2, int1], LowRankMatrix(Ubnd2, Vint2))
-  end
-  @timeit ta "Abb" begin
   Abb = BlockMatrix(S1.A22, A[bnd1, bnd2], A[bnd2, bnd1], S2.A22)
-  end
   return Aii, Aib, Abi, Abb
 end
 
