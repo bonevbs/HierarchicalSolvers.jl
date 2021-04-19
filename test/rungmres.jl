@@ -10,13 +10,6 @@ include("../src/HierarchicalSolvers.jl")
 using .HierarchicalSolvers
 using HssMatrices
 
-#using Profile
-#using Traceur
-#using ProfileView
-#using Cthulhu
-using TimerOutputs
-#using BenchmarkTools
-
 include("../util/read_problem.jl")
 #A, b, nd = read_problem("./test/test.mat")
 #A, b, nd = read_problem("./test/poisson2d_p1_h64.mat")
@@ -32,25 +25,19 @@ println("Problem parameters:")
 println("   $(size(A)) matrix")
 println("   $(depth(nd))-level nested-dissection")
 
-reset_timer!(HierarchicalSolvers.to)
+println("Replacing sparse getindex")
+@eval SparseArrays include("../src/mygetindex.jl");
+
 println("Computing factorization without compression...")
-Fa = factor(A, nd, nd_loc; swlevel = 0)
-show(HierarchicalSolvers.to)
-println()
-@time factor(A, nd, nd_loc; swlevel = 0)
+Fa, ta = @timed factor(A, nd, nd_loc; swlevel = 0)
+println("took ", ta, " seconds")
 #@time Fa = factor(A, nd; swlevel = 0)
 #xa = ldiv!(Fa, copy(b));
 #println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
 
-reset_timer!(HierarchicalSolvers.to)
-reset_timer!(HierarchicalSolvers.ta)
 println("Computing factorization with compression...")
-Fc = factor(A, nd, nd_loc; swlevel = -6, swsize=4*bsz, atol=1e-5, rtol=1e-5, kest=40, stepsize=10, leafsize=bsz, verbose=false)
-show(HierarchicalSolvers.to)
-println()
-show(HierarchicalSolvers.ta)
-println()
-@time factor(A, nd, nd_loc; swlevel = -6, swsize=4*bsz, atol=1e-5, rtol=1e-5, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+Fc, tc = @timed factor(A, nd, nd_loc; swlevel = -6, swsize=4*bsz, atol=1e-6, rtol=1e-6, kest=40, stepsize=10, leafsize=bsz, verbose=false)
+println("took ", tc, " seconds")
 #println("Computing approximate solution...")
 #xc = ldiv!(Fc, copy(b));
 #@time xc = ldiv!(Fc, copy(b));

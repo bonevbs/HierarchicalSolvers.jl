@@ -78,8 +78,6 @@ module HierarchicalSolvers
     opts.leafsize ≥ 1 || throw(ArgumentError("leafsize"))
   end
 
-  @eval SparseArrays include("mygetindex.jl");
-
   include("nesteddissection.jl")
   include("lowrankextensions.jl")
   include("blockmatrix.jl")
