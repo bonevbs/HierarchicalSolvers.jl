@@ -111,14 +111,13 @@ end
 size(F::BlockFactorization) = size(F.B)
 size(F::BlockFactorization, dim::Int) = size(F.B, dim)
 
-# ompute block factorization
+# compute block factorization
 function blockfactor(A::BlockMatrix, opts::SolverOptions=SolverOptions();  args...)
   size(A.A11,1) == size(A.A11,2) || throw(DimensionMismatch("First block of A is not square."))
   size(A.A22,1) == size(A.A22,2) || throw(DimensionMismatch("Second block of A is not square."))
   S22 = A.A22 .- A.A21*(A.A11\convert(Matrix, A.A12))
   return BlockFactorization(BlockMatrix(A.A11, A.A12, A.A21, S22))
 end
-
 function blockfactor(A::BlockMatrix{T, HT, HT, HT, HT}, opts::SolverOptions=SolverOptions();  args...) where HT<:HssMatrix{T} where T
   opts = copy(opts; args...)
   chkopts!(opts)

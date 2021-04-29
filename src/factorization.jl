@@ -84,7 +84,7 @@ function _factor_branch(A::AbstractMatrix{T}, Fl::FactorNode{T}, Fr::FactorNode{
 
   # make sure clusters are matching
   if ishss(Fl.S) && ishss(Fr.S)
-    S1, S2 = _equilibrate_clusters(Fl.S, Fr.S)
+    S1, S2 = _equilibrate_clusters(Fl.S, Fr.S; verbose)
   else
     S1, S2 = Fl.S, Fr.S
   end
@@ -140,7 +140,7 @@ function _assemble_blocks(A::AbstractMatrix{T}, S1::HssMatrix{T}, S2::HssMatrix{
 end
 
 # make sure HSS structures among Schur complements is matching
-function _equilibrate_clusters(S1::HssMatrix, S2::HssMatrix)
+function _equilibrate_clusters(S1::HssMatrix, S2::HssMatrix; verbose=false)
   rcl1, ccl1 = cluster(S1.A11); rcl2, ccl2 = cluster(S2.A11)
   if !compatible(rcl1, rcl2)
     while !compatible(rcl1, rcl2)
