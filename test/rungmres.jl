@@ -12,15 +12,14 @@ using HssMatrices
 
 include("../util/read_problem.jl")
 #A, b, nd = read_problem("./test/test.mat")
-#A, b, nd = read_problem("./test/poisson2d_p1_h64.mat")
-A, b, nd = read_problem("./test/poisson3d_p1_h16_nmax10.mat")
+A, b, nd = read_problem("./test/poisson2d_p1_h64.mat")
 nd, nd_loc = symfact!(nd)
 perm = postorder(nd)
 A = permute(A, perm, perm)
 nd = permuted!(nd, invperm(perm))
 
 pdeg=1
-bsz = 60*(pdeg+1)*(pdeg+2)*(pdeg+3)
+bsz = 20*(pdeg+1)*(pdeg+2)
 
 println("Problem parameters:")
 println("   $(size(A)) matrix")
@@ -37,7 +36,7 @@ println("took ", ta, " seconds")
 #println("rel. error without compression ", norm(A*xa-b)/norm(A\b))
 
 println("Computing factorization with compression...")
-Fc, tc = @timed factor(A, nd, nd_loc; swlevel = -2, swsize=4*bsz, atol=1e-3, rtol=1e-3, kest=200, stepsize=100, leafsize=bsz, verbose=true)
+Fc, tc = @timed factor(A, nd, nd_loc; swlevel = -2, swsize=4*bsz, atol=1e-2, rtol=1e-2, kest=200, stepsize=100, leafsize=bsz, verbose=true)
 println("took ", tc, " seconds")
 #println("Computing approximate solution...")
 #xc = ldiv!(Fc, copy(b));
